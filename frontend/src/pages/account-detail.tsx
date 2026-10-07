@@ -135,32 +135,16 @@ function dueDateForCycle(cycleEnd: string, dueDay: number | null | undefined): s
   return format(bill, 'yyyy-MM-dd')
 }
 
-/** Build a "Maio 2026"-style label for a credit card cycle.
- * Brazilian convention: the bill is named after the month it's due, which is
- * the next occurrence of payment_due_day strictly after the cycle close. */
+/** Build a label for a credit card cycle (e.g. "sep 2026").
+ * The cycle is named after the month in which the cycle/purchases occurred (filterTo). */
 function creditCardCycleLabel(
   filterTo: string,
-  dueDay: number | null | undefined,
+  _dueDay: number | null | undefined,
   i18nLanguage: string,
 ): string {
   const dateFnsLocale = resolveDateFnsLocale(i18nLanguage)
   const to = parseISO(filterTo + 'T00:00:00')
-  if (!dueDay) {
-    return format(to, 'MMM yyyy', { locale: dateFnsLocale })
-  }
-  const y = to.getFullYear()
-  const m = to.getMonth()
-  const clamp = (yy: number, mm: number) => Math.min(dueDay, daysInMonth(yy, mm))
-  const sameMonth = new Date(y, m, clamp(y, m))
-  let bill: Date
-  if (sameMonth > to) {
-    bill = sameMonth
-  } else {
-    const ny = m === 11 ? y + 1 : y
-    const nm = m === 11 ? 0 : m + 1
-    bill = new Date(ny, nm, clamp(ny, nm))
-  }
-  return format(bill, 'MMM yyyy', { locale: dateFnsLocale })
+  return format(to, 'MMM yyyy', { locale: dateFnsLocale })
 }
 
 /** Build the [start, end] range a credit-card transaction would belong to
@@ -1133,7 +1117,7 @@ export default function AccountDetailPage() {
                     className="inline-flex items-center justify-center gap-2 min-w-[140px] border border-border rounded-lg px-3 py-1.5 text-sm bg-card text-foreground hover:bg-muted/50 transition-all cursor-pointer capitalize"
                   >
                     {activeBill
-                      ? format(parseISO(activeBill.due_date + 'T00:00:00'), 'MMM yyyy', {
+                      ? format(addMonths(parseISO(activeBill.due_date + 'T00:00:00'), -1), 'MMM yyyy', {
                           locale: resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language),
                         })
                       : isCycleMathWindow
@@ -1276,7 +1260,7 @@ export default function AccountDetailPage() {
                 // month (handles dynamic close days). Otherwise fall back to
                 // the cycle-math label that maps close → due → month.
                 const label = c.bill
-                  ? format(parseISO(c.bill.due_date + 'T00:00:00'), 'MMM yyyy', { locale: dfLocale })
+                  ? format(addMonths(parseISO(c.bill.due_date + 'T00:00:00'), -1), 'MMM yyyy', { locale: dfLocale })
                   : creditCardCycleLabel(c.end, account.payment_due_day, i18n.language)
                 return (
                   <button
@@ -1370,7 +1354,7 @@ export default function AccountDetailPage() {
         const showComparison = (prevLabelBill || previousCycle) && prevTotal > 0
         const deltaPct = showComparison ? ((billTotal - prevTotal) / prevTotal) * 100 : null
         const prevCycleLabel = prevLabelBill
-          ? format(parseISO(prevLabelBill.due_date + 'T00:00:00'), 'MMM yyyy', {
+          ? format(addMonths(parseISO(prevLabelBill.due_date + 'T00:00:00'), -1), 'MMM yyyy', {
               locale: resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language),
             })
           : previousCycle
