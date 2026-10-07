@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 import type { CreditCardBill, ProjectedTransaction, Transaction } from '@/types'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, ArrowLeftRight, ArrowUp, ArrowDown, ArrowUpDown, CalendarClock, ChevronLeft, ChevronRight, Clock, EyeClosed, HelpCircle, Paperclip, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, ArrowUp, ArrowDown, ArrowUpDown, CalendarClock, ChevronLeft, ChevronRight, Clock, Eye, EyeClosed, HelpCircle, Paperclip, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { MobileTransactionRow } from '@/components/mobile-transaction-row'
 import { CategoryIcon } from '@/components/category-icon'
 import { ProjectedTransactionBadge } from '@/components/projected-transaction-badge'
@@ -282,9 +282,25 @@ export default function AccountDetailPage() {
   const { collapsed: sidebarCollapsed } = useSidebarState()
 
   // Table search, category, type filter, sorting, and bulk selection state
+  const [showIgnored, setShowIgnored] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('securo.accounts.showIgnored') === 'true'
+    } catch {
+      return false
+    }
+  })
+  const handleToggleShowIgnored = () => {
+    setShowIgnored((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('securo.accounts.showIgnored', String(next))
+      } catch {}
+      return next
+    })
+  }
   const [searchQuery, setSearchQuery] = useState('')
   const [filterCategoryId, setFilterCategoryId] = useState<string>('all')
-  const [filterType, setFilterType] = useState<'all' | 'debit' | 'credit' | 'transfer'>('all')
+  const [filterType, setFilterType] = useState<'all' | 'debit' | 'credit' | 'transfer' | 'ignored'>('all')
   const [sortBy, setSortBy] = useState<'date' | 'description' | 'category' | 'amount' | 'balance'>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -885,8 +901,30 @@ export default function AccountDetailPage() {
     : { start: defaultFrom(), end: defaultTo() }
   const hasFilters = filterFrom !== resolvedDefaultRange.start || filterTo !== resolvedDefaultRange.end
 
+  const ignoredCount = useMemo(() => {
+    return displayRows.filter((tx) => tx.is_ignored).length
+  }, [displayRows])
+
   const filteredAndSortedRows = useMemo(() => {
     let rows = [...displayRows]
+
+    // If filterType is 'ignored', show only ignored transactions
+    if (filterType === 'ignored') {
+      rows = rows.filter((tx) => tx.is_ignored)
+    } else {
+      // By default hide ignored unless showIgnored is true
+      if (!showIgnored) {
+        rows = rows.filter((tx) => !tx.is_ignored)
+      }
+
+      if (filterType === 'debit') {
+        rows = rows.filter((tx) => tx.type === 'debit' && !tx.transfer_pair_id)
+      } else if (filterType === 'credit') {
+        rows = rows.filter((tx) => tx.type === 'credit' && !tx.transfer_pair_id)
+      } else if (filterType === 'transfer') {
+        rows = rows.filter((tx) => !!tx.transfer_pair_id)
+      }
+    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
@@ -907,13 +945,7 @@ export default function AccountDetailPage() {
       }
     }
 
-    if (filterType === 'debit') {
-      rows = rows.filter((tx) => tx.type === 'debit' && !tx.transfer_pair_id)
-    } else if (filterType === 'credit') {
-      rows = rows.filter((tx) => tx.type === 'credit' && !tx.transfer_pair_id)
-    } else if (filterType === 'transfer') {
-      rows = rows.filter((tx) => !!tx.transfer_pair_id)
-    }
+
 
     rows.sort((a, b) => {
       let diff = 0
@@ -936,7 +968,7 @@ export default function AccountDetailPage() {
     })
 
     return rows
-  }, [displayRows, searchQuery, filterCategoryId, filterType, sortBy, sortDir, locale])
+  }, [displayRows, showIgnored, filterType, searchQuery, filterCategoryId, sortBy, sortDir, locale])
 
   const selectableRows = useMemo(() => {
     return filteredAndSortedRows.filter((tx) => tx.source !== 'opening_balance' && !tx.virtual)
@@ -965,7 +997,7 @@ export default function AccountDetailPage() {
     return total
   }, [selectedIds, displayRows])
 
-  const hasActiveTableFilters = Boolean(searchQuery.trim() || filterCategoryId !== 'all' || filterType !== 'all')
+  const hasActiveTableFilters = Boolean(searchQuery.trim() || filterCategoryId !== 'all' || filterType !== 'all' || showIgnored)
 
   // The mobile transaction view is intentionally grouped by day so the date
   // remains visible without spending a full column on every row.
@@ -1697,6 +1729,8 @@ export default function AccountDetailPage() {
                   setSearchQuery('')
                   setFilterCategoryId('all')
                   setFilterType('all')
+                  setShowIgnored(false)
+                  try { localStorage.setItem('securo.accounts.showIgnored', 'false') } catch {}
                 }}
                 className="text-xs text-muted-foreground hover:text-foreground h-8 px-2 self-start sm:self-auto"
               >
@@ -1746,7 +1780,7 @@ export default function AccountDetailPage() {
             </Select>
 
             <Select value={filterType} onValueChange={(val: any) => setFilterType(val)}>
-              <SelectTrigger className="w-[130px] sm:w-[145px] h-9 text-xs sm:text-sm bg-background">
+              <SelectTrigger className="w-[130px] sm:w-[155px] h-9 text-xs sm:text-sm bg-background">
                 <SelectValue placeholder={t('transactions.allTypes', 'Todos los tipos')} />
               </SelectTrigger>
               <SelectContent>
@@ -1754,8 +1788,40 @@ export default function AccountDetailPage() {
                 <SelectItem value="debit">{t('transactions.expenses', 'Gastos')}</SelectItem>
                 <SelectItem value="credit">{t('transactions.income', 'Ingresos')}</SelectItem>
                 <SelectItem value="transfer">{t('transactions.transfers', 'Transferencias')}</SelectItem>
+                {ignoredCount > 0 && (
+                  <SelectItem value="ignored">{t('transactions.ignored', 'Solo ignoradas')}</SelectItem>
+                )}
               </SelectContent>
             </Select>
+
+            {/* Toggle Ignored Button */}
+            {ignoredCount > 0 && (
+              <Button
+                type="button"
+                variant={showIgnored ? "secondary" : "outline"}
+                size="sm"
+                onClick={handleToggleShowIgnored}
+                className={cn(
+                  "h-9 text-xs sm:text-sm transition-colors",
+                  showIgnored
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium"
+                    : "text-muted-foreground"
+                )}
+                title={showIgnored ? t('transactions.hideIgnored', 'Ocultar transacciones ignoradas') : t('transactions.showIgnored', 'Ver transacciones ignoradas')}
+              >
+                {showIgnored ? (
+                  <>
+                    <Eye className="h-4 w-4 mr-1.5" />
+                    <span>{t('transactions.hideIgnored', 'Ocultar ignoradas')}</span>
+                  </>
+                ) : (
+                  <>
+                    <EyeClosed className="h-4 w-4 mr-1.5" />
+                    <span>{t('transactions.showIgnored', 'Ver ignoradas')} ({ignoredCount})</span>
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
 
