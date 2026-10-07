@@ -78,7 +78,20 @@ export function ExpenseBreakdown({
 
   // State
   const [searchQuery, setSearchQuery] = useState('')
-  const [groupBy, setGroupBy] = useState<'category' | 'group'>('category')
+  const [groupBy, setGroupBy] = useState<'category' | 'group'>(() => {
+    try {
+      const saved = localStorage.getItem('securo_expense_groupby')
+      if (saved === 'category' || saved === 'group') return saved
+    } catch {}
+    return 'category'
+  })
+
+  const handleGroupByChange = (mode: 'category' | 'group') => {
+    setGroupBy(mode)
+    try {
+      localStorage.setItem('securo_expense_groupby', mode)
+    } catch {}
+  }
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const [expandedPayees, setExpandedPayees] = useState<Set<string>>(new Set())
   const [showingAllTxsCategory, setShowingAllTxsCategory] = useState<string | null>(null)
@@ -520,7 +533,7 @@ export function ExpenseBreakdown({
           {/* Group By Toggle */}
           <div className="flex items-center rounded-lg border border-border bg-muted/30 overflow-hidden">
             <button
-              onClick={() => setGroupBy('category')}
+              onClick={() => handleGroupByChange('category')}
               className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
                 groupBy === 'category'
                   ? 'bg-primary text-primary-foreground'
@@ -530,7 +543,7 @@ export function ExpenseBreakdown({
               Por Categoría
             </button>
             <button
-              onClick={() => setGroupBy('group')}
+              onClick={() => handleGroupByChange('group')}
               className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
                 groupBy === 'group'
                   ? 'bg-primary text-primary-foreground'

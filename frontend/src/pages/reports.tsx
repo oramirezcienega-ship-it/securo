@@ -74,6 +74,10 @@ function formatCompact(value: number, currency = 'USD', locale = 'en-US') {
 type RangeOption = { key: string; months: number; period?: 'ytd'; days?: number }
 
 const HISTORICAL_RANGE_OPTIONS: readonly RangeOption[] = [
+  { key: 'this_month', months: 1 },
+  { key: 'last_month', months: 1 },
+  { key: '30d', months: 1, days: 30 },
+  { key: '3m', months: 3 },
   { key: '6m', months: 6 },
   { key: 'ytd', months: 12, period: 'ytd' },
   { key: '1y', months: 12 },
@@ -86,15 +90,18 @@ const FORWARD_RANGE_OPTIONS: readonly RangeOption[] = [
   { key: '12m', months: 12 },
 ]
 
-// The Money Map answers "where did my money go lately", so it leans on recent
-// windows (down to 30 days) and drops the 2Y trend view the other tabs keep.
-const MONEY_MAP_RANGE_OPTIONS: readonly RangeOption[] = [
+// Common expense-focused presets: This Month, Last Month, 30D, 3M, 6M (Semester), YTD, 1Y
+const EXPENSE_RANGE_OPTIONS: readonly RangeOption[] = [
+  { key: 'this_month', months: 1 },
+  { key: 'last_month', months: 1 },
   { key: '30d', months: 1, days: 30 },
   { key: '3m', months: 3 },
   { key: '6m', months: 6 },
   { key: 'ytd', months: 12, period: 'ytd' },
   { key: '1y', months: 12 },
 ]
+
+const MONEY_MAP_RANGE_OPTIONS = EXPENSE_RANGE_OPTIONS
 
 const HISTORICAL_INTERVAL_OPTIONS = [
   { key: 'daily', value: 'daily' },
@@ -117,6 +124,8 @@ const INTERVAL_LABELS: Record<string, string> = {
 }
 
 const RANGE_LABELS: Record<string, string> = {
+  this_month: 'rangeThisMonth',
+  last_month: 'rangeLastMonth',
   '30d': 'range30d',
   '3m': 'range3m',
   '6m': 'range6m',
@@ -180,8 +189,8 @@ const REPORT_TABS: ReportTab[] = [
   },
   {
     key: 'expense_breakdown', labelKey: 'reports.expenseBreakdown', enabled: true,
-    rangeOptions: MONEY_MAP_RANGE_OPTIONS, intervalOptions: HISTORICAL_INTERVAL_OPTIONS,
-    supportsCustomRange: true, fallbackRangeKey: '3m', fallbackInterval: 'monthly',
+    rangeOptions: EXPENSE_RANGE_OPTIONS, intervalOptions: HISTORICAL_INTERVAL_OPTIONS,
+    supportsCustomRange: true, fallbackRangeKey: 'this_month', fallbackInterval: 'monthly',
   },
 ]
 
@@ -193,16 +202,50 @@ export default function ReportsPage() {
   const locale = useDisplayLocale()
 
   const customDefaults = defaultCustomRange()
-  const [rangeKey, setRangeKey] = useState('1y')
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('securo_reports_active_tab')
+      if (saved && REPORT_TABS.some((t) => t.key === saved)) {
+        return saved
+      }
+    } catch {}
+    return 'expense_breakdown'
+  })
+  const [rangeKey, setRangeKey] = useState<string>(() => {
+    try {
+      const savedTab = localStorage.getItem('securo_reports_active_tab') || 'expense_breakdown'
+      const tabObj = REPORT_TABS.find((t) => t.key === savedTab) || REPORT_TABS[0]
+      const savedRange = localStorage.getItem('securo_reports_range_key')
+      if (savedRange && (tabObj.rangeOptions.some((r) => r.key === savedRange) || (savedRange === CUSTOM_RANGE_KEY && tabObj.supportsCustomRange))) {
+        return savedRange
+      }
+      return tabObj.fallbackRangeKey
+    } catch {
+      return 'this_month'
+    }
+  })
   const [interval, setInterval] = useState('monthly')
-  // Custom range endpoints (YYYY-MM-DD) — populated when the user opens the
-  // Custom preset and confirms a date range. Preserved across tab switches
-  // that still support custom ranges so the picker doesn't forget its
-  // selection while the user compares views.
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo, setCustomTo] = useState('')
-  const [activeTab, setActiveTab] = useState('net_worth')
-  const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('all')
+  const [customFrom, setCustomFrom] = useState<string>(() => {
+    try {
+      return localStorage.getItem('securo_reports_custom_from') || ''
+    } catch {
+      return ''
+    }
+  })
+  const [customTo, setCustomTo] = useState<string>(() => {
+    try {
+      return localStorage.getItem('securo_reports_custom_to') || ''
+    } catch {
+      return ''
+    }
+  })
+  const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>(() => {
+    try {
+      return localStorage.getItem('securo_reports_account_filter') || 'all'
+    } catch {
+      return 'all'
+    }
+  })
 
   const { data: accountsList = [] } = useQuery<Account[]>({
     queryKey: ['accounts'],
@@ -213,6 +256,21 @@ export default function ReportsPage() {
   const [sparklinePage, setSparklinePage] = useState(0)
   const [cashFlowBaseline, setCashFlowBaseline] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+
+  const handleRangeKeyChange = (key: string) => {
+    setRangeKey(key)
+    try {
+      localStorage.setItem('securo_reports_range_key', key)
+    } catch {}
+    setSelectedDate(null)
+  }
+
+  const handleAccountFilterChange = (val: string) => {
+    setSelectedAccountFilter(val)
+    try {
+      localStorage.setItem('securo_reports_account_filter', val)
+    } catch {}
+  }
   // Active Collection filter (issue #105): scope all report tabs to its
   // accounts; net worth also includes the collection's wallets' assets.
   const { activeAccountIds, activeWalletIds } = useCollectionFilter()
@@ -261,6 +319,15 @@ export default function ReportsPage() {
     }
     const today = new Date()
     const end = localDateString(today)
+    if (rangeKey === 'this_month') {
+      const start = format(new Date(today.getFullYear(), today.getMonth(), 1), 'yyyy-MM-dd')
+      return { start, end }
+    }
+    if (rangeKey === 'last_month') {
+      const start = format(new Date(today.getFullYear(), today.getMonth() - 1, 1), 'yyyy-MM-dd')
+      const lastMonthEnd = format(new Date(today.getFullYear(), today.getMonth(), 0), 'yyyy-MM-dd')
+      return { start, end: lastMonthEnd }
+    }
     if (rangeKey === '30d') {
       return { start: format(addDays(today, -30), 'yyyy-MM-dd'), end }
     }
@@ -298,12 +365,16 @@ export default function ReportsPage() {
   const months = isCustomRange ? customMonths : selectedRange.months
   const period = isCustomRange ? undefined : selectedRange.period
   const days = isCustomRange ? undefined : selectedRange.days
-  const apiStart = hasCustomRange ? customFrom : undefined
-  const apiEnd = hasCustomRange ? customTo : undefined
+  const isDatePinPreset = rangeKey === 'this_month' || rangeKey === 'last_month'
+  const apiStart = hasCustomRange ? customFrom : isDatePinPreset ? expenseDateRange.start : undefined
+  const apiEnd = hasCustomRange ? customTo : isDatePinPreset ? expenseDateRange.end : undefined
 
   const handleSelectTab = (key: string) => {
     const nextTab = REPORT_TABS.find((tab) => tab.key === key) ?? REPORT_TABS[0]
     setActiveTab(key)
+    try {
+      localStorage.setItem('securo_reports_active_tab', key)
+    } catch {}
     setCompositionView(key === 'net_worth' ? 'netWorth' : 'net')
     setSparklinePage(0)
     setSelectedDate(null)
@@ -312,7 +383,7 @@ export default function ReportsPage() {
       (rangeKey === CUSTOM_RANGE_KEY && nextTab.supportsCustomRange) ||
       nextTab.rangeOptions.some((r) => r.key === rangeKey)
     if (!stillValid) {
-      setRangeKey(nextTab.fallbackRangeKey)
+      handleRangeKeyChange(nextTab.fallbackRangeKey)
     }
     if (!nextTab.intervalOptions.some((i) => i.value === interval)) {
       setInterval(nextTab.fallbackInterval)
@@ -589,7 +660,7 @@ export default function ReportsPage() {
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             {/* Account Selector */}
             <div className="min-w-[160px] sm:min-w-[190px]">
-              <Select value={selectedAccountFilter} onValueChange={setSelectedAccountFilter}>
+              <Select value={selectedAccountFilter} onValueChange={handleAccountFilterChange}>
                 <SelectTrigger className="h-8 text-xs bg-card border-border">
                   <div className="flex items-center gap-1.5 truncate">
                     <CreditCard className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -652,14 +723,14 @@ export default function ReportsPage() {
               {rangeOptions.map((opt) => (
                 <button
                   key={opt.key}
-                  onClick={() => { setRangeKey(opt.key); setSelectedDate(null) }}
-                  className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  onClick={() => handleRangeKeyChange(opt.key)}
+                  className={`px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
                     rangeKey === opt.key
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   }`}
                 >
-                  {t(`reports.${RANGE_LABELS[opt.key]}`)}
+                  {t(`reports.${RANGE_LABELS[opt.key]}`, { defaultValue: opt.key })}
                 </button>
               ))}
               {supportsCustomRange && (
@@ -675,8 +746,11 @@ export default function ReportsPage() {
                   onChange={(f, to) => {
                     setCustomFrom(f)
                     setCustomTo(to)
-                    setRangeKey(f && to ? CUSTOM_RANGE_KEY : currentTab.fallbackRangeKey)
-                    setSelectedDate(null)
+                    try {
+                      localStorage.setItem('securo_reports_custom_from', f)
+                      localStorage.setItem('securo_reports_custom_to', to)
+                    } catch {}
+                    handleRangeKeyChange(f && to ? CUSTOM_RANGE_KEY : currentTab.fallbackRangeKey)
                   }}
                   label={t('reports.customRange')}
                   placeholder={t('reports.pickCustomRange')}
