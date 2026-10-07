@@ -507,6 +507,7 @@ export const transactions = {
     account_ids?: string[]
     category_id?: string
     category_ids?: string[]
+    asset_id?: string
     payee_id?: string
     uncategorized?: boolean
     type?: string

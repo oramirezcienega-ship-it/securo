@@ -6,7 +6,7 @@ import { useDateLocale, useDisplayLocale } from '@/hooks/use-display-locale'
 import { formatAmountInput, formatCurrency, parseAmountInput } from '@/lib/format'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/contexts/auth-context'
-import { currencies as currenciesApi, transactions as transactionsApi, settings as settingsApi, payees as payeesApi, rules as rulesApi, categories as categoriesApi, categoryGroups as categoryGroupsApi } from '@/lib/api'
+import { currencies as currenciesApi, transactions as transactionsApi, settings as settingsApi, payees as payeesApi, rules as rulesApi, categories as categoriesApi, categoryGroups as categoryGroupsApi, assets as assetsApi } from '@/lib/api'
 import { localDateString } from '@/lib/date-utils'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
 import { normalizeRuleMatchValue } from '@/lib/rule-match-utils'
@@ -27,7 +27,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { AlertTriangle, ChevronDown, ChevronLeft, Download, Eye, EyeClosed, Paperclip, Upload, X, FileText, Plus, Unlink, SlidersHorizontal, ListPlus, Check } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronLeft, Download, Eye, EyeClosed, Paperclip, Upload, X, FileText, Plus, Unlink, SlidersHorizontal, ListPlus, Check, Home } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -459,6 +459,13 @@ function TransactionForm({
   const [payeeId, setPayeeId] = useState(seed?.payee_id ?? '')
   const [accountId, setAccountId] = useState(seed?.account_id ?? defaultAccountId ?? sortedAccounts[0]?.id ?? '')
   const [notes, setNotes] = useState(seed?.notes ?? '')
+  const [assetId, setAssetId] = useState(seed?.asset_id ?? '')
+  const [assetAction, setAssetAction] = useState<'maintenance' | 'capitalize'>(seed?.asset_action ?? 'maintenance')
+
+  const { data: assetsList = [] } = useQuery({
+    queryKey: ['assets'],
+    queryFn: () => assetsApi.list(),
+  })
   // Manual CC bucketing override (issue #92). Empty = auto. Visible only
   // when the selected account is a credit card.
   const [effectiveBillDate, setEffectiveBillDate] = useState(seed?.effective_bill_date ?? '')
@@ -823,6 +830,8 @@ function TransactionForm({
               payee_id: payeeId || null,
               account_id: accountId || undefined,
               notes: notes.trim() || null,
+              asset_id: assetId || null,
+              asset_action: assetId ? assetAction : null,
               is_ignored: isIgnored,
               ...pnlExclusionPayload,
               // Creation defaults to "posted" server-side; the user can
@@ -1190,6 +1199,76 @@ function TransactionForm({
           onChange={(e) => setNotes(e.target.value)}
           placeholder={t('transactions.notesPlaceholder')}
         />
+      </div>
+
+      {/* Asset Link (Optional) */}
+      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <Home className="h-3.5 w-3.5 text-primary" />
+            {t('transactions.linkToAsset', 'Vincular a Activo (Opcional)')}
+          </Label>
+          {assetId && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={() => { setAssetId(''); setAssetAction('maintenance'); }}
+            >
+              {t('common.clear', 'Desvincular')}
+            </Button>
+          )}
+        </div>
+        <select
+          className="w-full border border-border rounded-md px-3 py-2 text-sm bg-card focus:outline-none focus-visible:ring-ring/30 focus-visible:ring-[2px]"
+          value={assetId}
+          onChange={(e) => setAssetId(e.target.value)}
+        >
+          <option value="">{t('transactions.noAssetLinked', 'Ningún activo vinculado')}</option>
+          {assetsList.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name} ({t(`assets.type${a.type.charAt(0).toUpperCase() + a.type.slice(1)}`, a.type)})
+            </option>
+          ))}
+        </select>
+
+        {assetId && (
+          <div className="space-y-1.5 pt-1 border-t border-border/50">
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {t('transactions.assetImpact', 'Tipo de afectación al activo:')}
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setAssetAction('capitalize')}
+                className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${
+                  assetAction === 'capitalize'
+                    ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold shadow-sm'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted/50'
+                }`}
+              >
+                <span>🏗️ {t('transactions.capitalize', 'Mejora / Plusvalía (CAPEX)')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAssetAction('maintenance')}
+                className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-all ${
+                  assetAction === 'maintenance'
+                    ? 'border-blue-500/60 bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold shadow-sm'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted/50'
+                }`}
+              >
+                <span>🔧 {t('transactions.maintenance', 'Mantenimiento (OPEX)')}</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {assetAction === 'capitalize'
+                ? t('transactions.capitalizeHint', 'Obras, construcciones o remodelaciones que incrementan el valor del bien.')
+                : t('transactions.maintenanceHint', 'Reparaciones, afinaciones o costos operativos de conservación.')}
+            </p>
+          </div>
+        )}
       </div>
 
       {transaction && (

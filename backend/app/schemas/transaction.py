@@ -27,7 +27,11 @@ class TransactionBase(BaseModel):
 class TransactionCreate(TransactionBase):
     account_id: uuid.UUID
     category_id: Optional[uuid.UUID] = None
+    asset_id: Optional[uuid.UUID] = None
+    asset_action: Optional[Literal["maintenance", "capitalize"]] = None
     payee_id: Optional[uuid.UUID] = None
+    asset_id: Optional[uuid.UUID] = None
+    asset_action: Optional[Literal["maintenance", "capitalize"]] = None
     currency: Optional[str] = None
     notes: Optional[str] = None
     amount_primary: Optional[Decimal] = None
@@ -173,6 +177,9 @@ class TransactionRead(TransactionBase):
     original_description: Optional[str] = None
     payee_id: Optional[uuid.UUID] = None
     payee_name: Optional[str] = None
+    asset_id: Optional[uuid.UUID] = None
+    asset_action: Optional[str] = None
+    asset_name: Optional[str] = None
     notes: Optional[str] = None
     transfer_pair_id: Optional[uuid.UUID] = None
     amount_primary: Optional[float] = None

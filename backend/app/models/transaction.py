@@ -11,6 +11,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.account import Account
+    from app.models.asset import Asset
     from app.models.category import Category
     from app.models.credit_card_bill import CreditCardBill
     from app.models.import_log import ImportLog
@@ -115,6 +116,13 @@ class Transaction(Base):
         nullable=True,
         index=True,
     )
+    asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("assets.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    asset_action: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     account: Mapped["Account"] = relationship(back_populates="transactions")
@@ -131,6 +139,7 @@ class Transaction(Base):
     splits: Mapped[list["TransactionSplit"]] = relationship(
         back_populates="transaction", cascade="all, delete-orphan"
     )
+    asset: Mapped[Optional["Asset"]] = relationship()
 
     # Populated dynamically by the service (not DB columns).
     is_shared: bool = False
@@ -139,6 +148,7 @@ class Transaction(Base):
     parent_owner_name = cast(Optional[str], None)
     attachment_count: int = 0
     payee_name = cast(Optional[str], None)
+    asset_name = cast(Optional[str], None)
 
 
 # Safety net: `effective_date` is NOT NULL. For non-CC transactions it always

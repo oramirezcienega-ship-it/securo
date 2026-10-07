@@ -3,7 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRegisterPageChatContext } from '@/lib/page-chat-context'
-import { assets, assetGroups, currencies as currenciesApi } from '@/lib/api'
+import { assets, assetGroups, currencies as currenciesApi, transactions as transactionsApi, categories as categoriesApi, categoryGroups as categoryGroupsApi, accounts as accountsApi } from '@/lib/api'
+import { TransactionDialog, type TransactionSavePayload } from '@/components/transaction-dialog'
+import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
+import { extractApiError } from '@/lib/api-errors'
 import { localDateString } from '@/lib/date-utils'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -19,7 +22,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
-import type { Asset, AssetGroup, AssetTransaction, AssetValue, MarketSymbolMatch, MarketSymbolQuote } from '@/types'
+import type { Asset, AssetGroup, AssetTransaction, AssetValue, MarketSymbolMatch, MarketSymbolQuote, Transaction, TransactionEditPayload } from '@/types'
 import {
   Home,
   Car,
@@ -41,6 +44,8 @@ import {
   PieChart,
   AlertTriangle,
   Upload,
+  Receipt,
+  Sparkles,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -2263,6 +2268,332 @@ function AssetDetail({ assetId, currency, locale: loc, dateLocale: dateLoc, purc
           <p className="text-xs text-muted-foreground py-3 text-center">{t('dashboard.noData')}</p>
         )}
       </div>}
+
+      {/* Related Expenses & Improvements Section */}
+      <AssetExpensesSection
+        assetId={assetId}
+        currency={currency}
+        locale={loc}
+        dateLocale={dateLoc}
+        purchasePrice={purchasePrice}
+        canWrite={canWrite}
+        onAddValue={(newVal) => {
+          addValueMutation.mutate({
+            assetId,
+            amount: newVal,
+            date: localDateString(),
+          })
+        }}
+      />
+    </div>
+  )
+}
+
+
+function AssetExpensesSection({
+  assetId,
+  currency,
+  locale: loc,
+  dateLocale: dateLoc,
+  purchasePrice,
+  canWrite,
+  onAddValue,
+}: {
+  assetId: string
+  currency: string
+  locale: string
+  dateLocale: string
+  purchasePrice: number | null
+  canWrite: boolean
+  onAddValue: (newVal: number) => void
+}) {
+  const { t } = useTranslation()
+  const { mask } = usePrivacyMode()
+  const queryClient = useQueryClient()
+
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  const [draftPayload, setDraftPayload] = useState<TransactionEditPayload | null>(null)
+
+  const { data: txData, isLoading } = useQuery({
+    queryKey: ['transactions', 'asset', assetId],
+    queryFn: () => transactionsApi.list({ asset_id: assetId, limit: 500 }),
+  })
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => categoriesApi.list(),
+  })
+  const { data: categoryGroups = [] } = useQuery({
+    queryKey: ['categoryGroups'],
+    queryFn: () => categoryGroupsApi.list(),
+  })
+  const { data: accountsList = [] } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => accountsApi.list(),
+  })
+
+  const items = useMemo(() => txData?.items ?? [], [txData])
+
+  const { capitalizeTotal, maintenanceTotal, totalExpenses } = useMemo(() => {
+    let cap = 0
+    let main = 0
+    for (const tx of items) {
+      if (tx.is_ignored) continue
+      const amt = Math.abs(Number(tx.amount))
+      if (tx.asset_action === 'capitalize') {
+        cap += amt
+      } else {
+        main += amt
+      }
+    }
+    return {
+      capitalizeTotal: cap,
+      maintenanceTotal: main,
+      totalExpenses: cap + main,
+    }
+  }, [items])
+
+  const saveTxMutation = useMutation({
+    mutationFn: (payload: TransactionSavePayload) => {
+      if (editingTx) {
+        return transactionsApi.update(editingTx.id, payload)
+      }
+      return transactionsApi.create(payload)
+    },
+    onSuccess: () => {
+      invalidateFinancialQueries(queryClient)
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'asset', assetId] })
+      setDialogOpen(false)
+      setEditingTx(null)
+      setDraftPayload(null)
+      toast.success(t('common.saved', 'Transacción guardada'))
+    },
+    onError: (err: any) => {
+      toast.error(extractApiError(err, t('common.error', 'Error al guardar')))
+    },
+  })
+
+  const openNewExpense = (action: 'capitalize' | 'maintenance' = 'capitalize') => {
+    setEditingTx(null)
+    setDraftPayload({
+      asset_id: assetId,
+      asset_action: action,
+      type: 'debit',
+      currency,
+    } as TransactionEditPayload)
+    setDialogOpen(true)
+  }
+
+  const openEditTx = (tx: Transaction) => {
+    setEditingTx(tx)
+    setDraftPayload(null)
+    setDialogOpen(true)
+  }
+
+  const totalCostBasis = (purchasePrice ?? 0) + capitalizeTotal
+
+  return (
+    <div className="pt-4 border-t border-border/70 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Receipt size={15} className="text-primary" />
+          <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider">
+            {t('assets.relatedExpensesTitle', 'Gastos y Mejoras Relacionados')}
+          </h4>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-mono">
+            {items.length}
+          </Badge>
+        </div>
+
+        {canWrite && (
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1 border-emerald-500/30 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400"
+              onClick={() => openNewExpense('capitalize')}
+            >
+              <Plus size={13} />
+              <span>+ Mejora (CAPEX)</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1 border-blue-500/30 text-blue-600 hover:text-blue-700 hover:bg-blue-500/10 dark:text-blue-400"
+              onClick={() => openNewExpense('maintenance')}
+            >
+              <Plus size={13} />
+              <span>+ Mantenimiento (OPEX)</span>
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* 3 Executive Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+              🏗️ {t('assets.capitalizedImprovements', 'Mejoras (Plusvalía)')}
+            </span>
+            <Badge variant="outline" className="text-[9px] px-1 py-0 border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
+              CAPEX
+            </Badge>
+          </div>
+          <div className="mt-1 text-base font-bold text-foreground tabular-nums">
+            {mask(formatCurrency(capitalizeTotal, currency, loc))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {t('assets.capitalizedHint', 'Inversión acumulada que incrementa el valor')}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-2.5 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-blue-800 dark:text-blue-300 flex items-center gap-1">
+              🔧 {t('assets.maintenanceCosts', 'Mantenimiento y Uso')}
+            </span>
+            <Badge variant="outline" className="text-[9px] px-1 py-0 border-blue-500/30 text-blue-700 dark:text-blue-300">
+              OPEX
+            </Badge>
+          </div>
+          <div className="mt-1 text-base font-bold text-foreground tabular-nums">
+            {mask(formatCurrency(maintenanceTotal, currency, loc))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {t('assets.maintenanceCostHint', 'Costos corrientes de conservación')}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-2.5 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+              💰 {t('assets.totalLinkedExpenses', 'Total Gastado')}
+            </span>
+            <Badge variant="outline" className="text-[9px] px-1 py-0">
+              {items.length} movs
+            </Badge>
+          </div>
+          <div className="mt-1 text-base font-bold text-foreground tabular-nums">
+            {mask(formatCurrency(totalExpenses, currency, loc))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {t('assets.totalLinkedHint', 'Gastos totales vinculados al bien')}
+          </p>
+        </div>
+      </div>
+
+      {/* Capitalization Value Syncer Banner */}
+      {purchasePrice != null && capitalizeTotal > 0 && canWrite && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5 flex items-center justify-between flex-wrap gap-2">
+          <div className="text-xs">
+            <span className="text-muted-foreground">{t('assets.purchasePrice')}: </span>
+            <span className="font-semibold text-foreground">{mask(formatCurrency(purchasePrice, currency, loc))}</span>
+            <span className="text-muted-foreground"> + {t('assets.capitalizedImprovements', 'Mejoras')}: </span>
+            <span className="font-semibold text-emerald-600">+{mask(formatCurrency(capitalizeTotal, currency, loc))}</span>
+            <span className="text-muted-foreground"> = {t('assets.totalInvestedCost', 'Costo Invertido Total')}: </span>
+            <span className="font-bold text-foreground underline">{mask(formatCurrency(totalCostBasis, currency, loc))}</span>
+          </div>
+          <Button
+            size="sm"
+            variant="default"
+            className="h-7 text-xs gap-1 font-medium shadow-sm"
+            onClick={() => onAddValue(totalCostBasis)}
+          >
+            <Sparkles size={13} />
+            {t('assets.applyImprovementsToValuation', 'Actualizar valor del activo con mejoras')}
+          </Button>
+        </div>
+      )}
+
+      {/* Transactions Table */}
+      {isLoading ? (
+        <Skeleton className="h-20 w-full rounded-lg" />
+      ) : items.length > 0 ? (
+        <div className="rounded-lg border border-border overflow-hidden divide-y divide-border bg-card/60">
+          {items.map((tx) => {
+            const isCap = tx.asset_action === 'capitalize'
+            const amt = Math.abs(Number(tx.amount))
+            return (
+              <div
+                key={tx.id}
+                className="flex items-center justify-between py-2 px-3 hover:bg-muted/30 transition-colors text-xs"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                    {new Date(tx.date + 'T00:00:00').toLocaleDateString(dateLoc)}
+                  </span>
+                  <div className="min-w-0 truncate">
+                    <span className="font-medium text-foreground truncate block">
+                      {tx.payee_name || tx.payee || tx.description}
+                    </span>
+                    {tx.category && (
+                      <span className="text-[10px] text-muted-foreground truncate block">
+                        {tx.category.name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] px-1.5 py-0 font-medium ${
+                      isCap
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                        : 'border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                    }`}
+                  >
+                    {isCap ? '🏗️ Mejora (CAPEX)' : '🔧 Mantenimiento'}
+                  </Badge>
+                  <span className="font-semibold tabular-nums text-foreground">
+                    {mask(formatCurrency(amt, tx.currency || currency, loc))}
+                  </span>
+                  {canWrite && (
+                    <button
+                      onClick={() => openEditTx(tx)}
+                      className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+                      title={t('common.edit', 'Editar')}
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-border p-4 text-center">
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'assets.noLinkedExpensesHint',
+              'Aún no hay gastos vinculados a este activo. Al registrar un gasto o editarlo, puedes usar el selector "Vincular a Activo" para concentrar sus gastos aquí.',
+            )}
+          </p>
+        </div>
+      )}
+
+      {/* Integrated Transaction Dialog */}
+      {dialogOpen && (
+        <TransactionDialog
+          open={dialogOpen}
+          onClose={() => {
+            setDialogOpen(false)
+            setEditingTx(null)
+            setDraftPayload(null)
+          }}
+          transaction={editingTx}
+          duplicateDraft={draftPayload}
+          categories={categories}
+          categoryGroups={categoryGroups}
+          accounts={accountsList}
+          onSave={(payload) => saveTxMutation.mutate(payload)}
+          loading={saveTxMutation.isPending}
+          error={null}
+        />
+      )}
     </div>
   )
 }

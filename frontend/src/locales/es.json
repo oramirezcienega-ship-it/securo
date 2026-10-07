@@ -1150,7 +1150,14 @@
     "invoiceBadgeTooltip": "Esta transacción salda una factura. Ábrela.",
     "suggestionBadge": "Pregunta",
     "suggestionBadgeTooltip": "Un pago puede saldar esta factura. Abre la cola para responder.",
-    "clearGroupFilter": "Quitar filtro de grupo"
+    "clearGroupFilter": "Quitar filtro de grupo",
+    "linkToAsset": "Vincular a Activo (Opcional)",
+    "noAssetLinked": "Ningún activo vinculado",
+    "assetImpact": "Tipo de afectación al activo:",
+    "capitalize": "Mejora / Plusvalía (CAPEX)",
+    "maintenance": "Mantenimiento (OPEX)",
+    "capitalizeHint": "Obras, construcciones o remodelaciones que incrementan el valor del bien.",
+    "maintenanceHint": "Reparaciones, afinaciones o costos operativos de conservación."
   },
   "accounts": {
     "title": "Cuentas",
@@ -1913,7 +1920,17 @@
     "total": "Total",
     "confirmRegenerateTitle": "¿Regenerar valores?",
     "confirmRegenerate": "Los parámetros de crecimiento cambiaron. Todos los valores generados automáticamente se eliminarán y recalcularán. Se conservarán los valores manuales.",
-    "regenerate": "Regenerar"
+    "regenerate": "Regenerar",
+    "relatedExpensesTitle": "Gastos y Mejoras Relacionados",
+    "capitalizedImprovements": "Mejoras (Plusvalía)",
+    "capitalizedHint": "Inversión acumulada que incrementa el valor",
+    "maintenanceCosts": "Mantenimiento y Uso",
+    "maintenanceCostHint": "Costos corrientes de conservación",
+    "totalLinkedExpenses": "Total Gastado",
+    "totalLinkedHint": "Gastos totales vinculados al bien",
+    "totalInvestedCost": "Costo Invertido Total",
+    "applyImprovementsToValuation": "Actualizar valor del activo con mejoras",
+    "noLinkedExpensesHint": "Aún no hay gastos vinculados a este activo. Al registrar un gasto o editarlo, puedes usar el selector \"Vincular a Activo\" para concentrar sus gastos aquí."
   },
   "reports": {
     "section": "Analítica",

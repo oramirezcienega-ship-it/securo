@@ -102,6 +102,7 @@ async def get_transactions(
     user_id: uuid.UUID,
     account_id: Optional[uuid.UUID] = None,
     category_id: Optional[uuid.UUID] = None,
+    asset_id: Optional[uuid.UUID] = None,
     payee_id: Optional[uuid.UUID] = None,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
@@ -187,6 +188,7 @@ async def get_transactions(
             selectinload(Transaction.account),
             selectinload(Transaction.payee_entity),
             selectinload(Transaction.splits),
+            selectinload(Transaction.asset),
         )
     )
     if transaction_ids:
@@ -254,6 +256,8 @@ async def get_transactions(
         base_query = base_query.where(Transaction.category_id.in_(category_ids))
     elif category_id:
         base_query = base_query.where(Transaction.category_id == category_id)
+    if asset_id:
+        base_query = base_query.where(Transaction.asset_id == asset_id)
     if payee_id:
         base_query = base_query.where(Transaction.payee_id == payee_id)
     if uncategorized:
@@ -520,6 +524,7 @@ async def get_transactions(
         for tx in transactions:
             tx.attachment_count = counts.get(tx.id, 0)
             tx.payee_name = tx.payee_entity.name if tx.payee_entity else None
+            tx.asset_name = tx.asset.name if tx.asset else None
         # Tag shared rows with the viewer's share + the source group.
         # Owned rows stay as-is. We pre-compute the viewer's linked
         # member ids → group ids once, then look up each transaction's
@@ -672,6 +677,7 @@ async def get_transaction(
             selectinload(Transaction.category),
             selectinload(Transaction.payee_entity),
             selectinload(Transaction.splits),
+            selectinload(Transaction.asset),
         )
     )
     transaction = result.scalar_one_or_none()
@@ -683,6 +689,7 @@ async def get_transaction(
         )
         transaction.attachment_count = count_result.scalar_one()
         transaction.payee_name = transaction.payee_entity.name if transaction.payee_entity else None
+        transaction.asset_name = transaction.asset.name if transaction.asset else None
     return transaction
 
 
@@ -720,6 +727,8 @@ async def create_transaction(
         account_id=data.account_id,
         category_id=data.category_id,  # use provided category if given
         payee_id=data.payee_id,
+        asset_id=data.asset_id,
+        asset_action=data.asset_action,
         external_id=data.external_id,
         description=data.description,
         amount=data.amount,
