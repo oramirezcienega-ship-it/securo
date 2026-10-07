@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 import type { CreditCardBill, ProjectedTransaction, Transaction } from '@/types'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, ArrowLeftRight, CalendarClock, ChevronLeft, ChevronRight, Clock, EyeClosed, HelpCircle, Paperclip, Pencil, Plus, X } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, ArrowUp, ArrowDown, ArrowUpDown, CalendarClock, ChevronLeft, ChevronRight, Clock, EyeClosed, HelpCircle, Paperclip, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { MobileTransactionRow } from '@/components/mobile-transaction-row'
 import { CategoryIcon } from '@/components/category-icon'
 import { ProjectedTransactionBadge } from '@/components/projected-transaction-badge'
@@ -23,10 +23,14 @@ import { TransactionDialog, type TransactionSavePayload } from '@/components/tra
 import { extractApiError } from '@/lib/api-errors'
 import { TransferDialog } from '@/components/transfer-dialog'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CategorySelect } from '@/components/category-select'
+import { useSidebarState } from '@/contexts/sidebar-state-context'
+import { cn } from '@/lib/utils'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useAuth } from '@/contexts/auth-context'
@@ -275,6 +279,58 @@ export default function AccountDetailPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+  const { collapsed: sidebarCollapsed } = useSidebarState()
+
+  // Table search, category, type filter, sorting, and bulk selection state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterCategoryId, setFilterCategoryId] = useState<string>('all')
+  const [filterType, setFilterType] = useState<'all' | 'debit' | 'credit' | 'transfer'>('all')
+  const [sortBy, setSortBy] = useState<'date' | 'description' | 'category' | 'amount' | 'balance'>('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkCategory, setBulkCategory] = useState<string>('')
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
+
+  const bulkCategorizeMutation = useMutation({
+    mutationFn: ({ ids, categoryId }: { ids: string[]; categoryId: string | null }) =>
+      transactions.bulkCategorize(ids, categoryId),
+    onSuccess: (result) => {
+      invalidateFinancialQueries(queryClient)
+      setSelectedIds(new Set())
+      setBulkCategory('')
+      toast.success(t('transactions.bulkSuccess', { count: result.updated }))
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error))
+    },
+  })
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: () => transactions.bulkDelete(Array.from(selectedIds)),
+    onSuccess: (result) => {
+      invalidateFinancialQueries(queryClient)
+      setSelectedIds(new Set())
+      setBulkDeleteConfirmOpen(false)
+      toast.success(t('transactions.bulkDeleteSuccess', { count: result.deleted }))
+    },
+    onError: (error) => {
+      toast.error(extractApiError(error))
+    },
+  })
+
+  const toggleSort = (column: 'date' | 'description' | 'category' | 'amount' | 'balance') => {
+    if (sortBy === column) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(column)
+      if (column === 'description' || column === 'category') {
+        setSortDir('asc')
+      } else {
+        setSortDir('desc')
+      }
+    }
+  }
+
   const {
     mutation: createMutation,
     create: createTransaction,
@@ -829,12 +885,94 @@ export default function AccountDetailPage() {
     : { start: defaultFrom(), end: defaultTo() }
   const hasFilters = filterFrom !== resolvedDefaultRange.start || filterTo !== resolvedDefaultRange.end
 
+  const filteredAndSortedRows = useMemo(() => {
+    let rows = [...displayRows]
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      rows = rows.filter((tx) => {
+        const desc = (tx.description || '').toLowerCase()
+        const payee = (tx.payee_name || tx.payee || '').toLowerCase()
+        const notes = (tx.notes || '').toLowerCase()
+        const cat = (tx.category?.name || '').toLowerCase()
+        return desc.includes(q) || payee.includes(q) || notes.includes(q) || cat.includes(q)
+      })
+    }
+
+    if (filterCategoryId !== 'all') {
+      if (filterCategoryId === 'uncategorized') {
+        rows = rows.filter((tx) => !tx.category_id && !tx.category)
+      } else {
+        rows = rows.filter((tx) => tx.category_id === filterCategoryId || tx.category?.id === filterCategoryId)
+      }
+    }
+
+    if (filterType === 'debit') {
+      rows = rows.filter((tx) => tx.type === 'debit' && !tx.transfer_pair_id)
+    } else if (filterType === 'credit') {
+      rows = rows.filter((tx) => tx.type === 'credit' && !tx.transfer_pair_id)
+    } else if (filterType === 'transfer') {
+      rows = rows.filter((tx) => !!tx.transfer_pair_id)
+    }
+
+    rows.sort((a, b) => {
+      let diff = 0
+      if (sortBy === 'date') {
+        diff = new Date(a.date).getTime() - new Date(b.date).getTime()
+      } else if (sortBy === 'description') {
+        diff = (a.description || '').localeCompare(b.description || '', locale)
+      } else if (sortBy === 'category') {
+        const catA = a.category?.name || ''
+        const catB = b.category?.name || ''
+        diff = catA.localeCompare(catB, locale)
+      } else if (sortBy === 'amount') {
+        const amtA = Math.abs(Number(a.amount || 0)) * (a.type === 'credit' ? 1 : -1)
+        const amtB = Math.abs(Number(b.amount || 0)) * (b.type === 'credit' ? 1 : -1)
+        diff = amtA - amtB
+      } else if (sortBy === 'balance') {
+        diff = (a.runningBalance || 0) - (b.runningBalance || 0)
+      }
+      return sortDir === 'asc' ? diff : -diff
+    })
+
+    return rows
+  }, [displayRows, searchQuery, filterCategoryId, filterType, sortBy, sortDir, locale])
+
+  const selectableRows = useMemo(() => {
+    return filteredAndSortedRows.filter((tx) => tx.source !== 'opening_balance' && !tx.virtual)
+  }, [filteredAndSortedRows])
+
+  const allSelected = selectableRows.length > 0 && selectableRows.every((tx) => selectedIds.has(tx.id))
+  const someSelected = selectableRows.some((tx) => selectedIds.has(tx.id)) && !allSelected
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(selectableRows.map((tx) => tx.id)))
+    }
+  }
+
+  const selectedTotal = useMemo(() => {
+    if (selectedIds.size === 0) return 0
+    let total = 0
+    for (const tx of displayRows) {
+      if (selectedIds.has(tx.id)) {
+        const amt = Math.abs(Number(tx.amount || 0))
+        total += tx.type === 'credit' ? amt : -amt
+      }
+    }
+    return total
+  }, [selectedIds, displayRows])
+
+  const hasActiveTableFilters = Boolean(searchQuery.trim() || filterCategoryId !== 'all' || filterType !== 'all')
+
   // The mobile transaction view is intentionally grouped by day so the date
   // remains visible without spending a full column on every row.
   const groupedByDate = useMemo(() => {
     const groups: { date: string; label: string; items: TxWithBalance[] }[] = []
     let current: { date: string; label: string; items: TxWithBalance[] } | null = null
-    for (const tx of displayRows) {
+    for (const tx of filteredAndSortedRows) {
       if (!current || current.date !== tx.date) {
         current = {
           date: tx.date,
@@ -851,7 +989,7 @@ export default function AccountDetailPage() {
       current.items.push(tx)
     }
     return groups
-  }, [displayRows, dateLocale])
+  }, [filteredAndSortedRows, dateLocale])
 
   const isLoading = accountLoading || summaryLoading
 
@@ -1542,16 +1680,108 @@ export default function AccountDetailPage() {
 
       {/* Transaction table */}
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-border">
-          <p className="font-semibold text-foreground">{t('transactions.title')}</p>
+        {/* Table Header & Filters */}
+        <div className="p-4 border-b border-border space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-foreground">{t('transactions.title')}</p>
+              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-medium">
+                {filteredAndSortedRows.length}{filteredAndSortedRows.length !== displayRows.length ? ` / ${displayRows.length}` : ''}
+              </span>
+            </div>
+            {hasActiveTableFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('')
+                  setFilterCategoryId('all')
+                  setFilterType('all')
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground h-8 px-2 self-start sm:self-auto"
+              >
+                <X className="h-3.5 w-3.5 mr-1" />
+                {t('common.clearFilters', 'Limpiar filtros')}
+              </Button>
+            )}
+          </div>
+
+          {/* Filter Bar Controls */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="relative flex-1 min-w-[180px] max-w-sm">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t('transactions.searchPlaceholder', 'Buscar por descripción, notas...')}
+                className="pl-9 pr-8 h-9 text-xs sm:text-sm bg-background"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <Select value={filterCategoryId} onValueChange={setFilterCategoryId}>
+              <SelectTrigger className="w-[160px] sm:w-[180px] h-9 text-xs sm:text-sm bg-background">
+                <SelectValue placeholder={t('transactions.allCategories', 'Todas las categorías')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('transactions.allCategories', 'Todas las categorías')}</SelectItem>
+                <SelectItem value="uncategorized">{t('transactions.uncategorized', 'Sin categorizar')}</SelectItem>
+                {categoriesList?.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    <div className="flex items-center gap-2">
+                      <CategoryIcon icon={cat.icon} color={cat.color} size="xs" />
+                      <span>{cat.name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={filterType} onValueChange={(val: any) => setFilterType(val)}>
+              <SelectTrigger className="w-[130px] sm:w-[145px] h-9 text-xs sm:text-sm bg-background">
+                <SelectValue placeholder={t('transactions.allTypes', 'Todos los tipos')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('transactions.allTypes', 'Todos')}</SelectItem>
+                <SelectItem value="debit">{t('transactions.expenses', 'Gastos')}</SelectItem>
+                <SelectItem value="credit">{t('transactions.income', 'Ingresos')}</SelectItem>
+                <SelectItem value="transfer">{t('transactions.transfers', 'Transferencias')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
+
         <div className="p-0">
           {txLoading ? (
             <div className="p-6 space-y-3">
               {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10" />)}
             </div>
-          ) : displayRows.length === 0 ? (
-            <p className="p-6 text-center text-muted-foreground">{t('accounts.noTransactions')}</p>
+          ) : filteredAndSortedRows.length === 0 ? (
+            <div className="p-8 text-center space-y-2">
+              <p className="text-muted-foreground">{t('transactions.noResults', 'No se encontraron transacciones')}</p>
+              {hasActiveTableFilters && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setFilterCategoryId('all')
+                    setFilterType('all')
+                  }}
+                  className="text-xs"
+                >
+                  {t('common.clearFilters', 'Limpiar filtros')}
+                </Button>
+              )}
+            </div>
           ) : isMobile ? (
             <div>
               {groupedByDate.map((group) => (
@@ -1567,18 +1797,32 @@ export default function AccountDetailPage() {
                       tx={tx}
                       account={account}
                       groupName={undefined}
-                      selected={false}
-                      selectable={false}
+                      selected={selectedIds.has(tx.id)}
+                      selectable={canWrite && tx.source !== 'opening_balance' && !tx.virtual}
                       canWrite={canWrite}
                       highlighted={false}
                       locale={locale}
                       userCurrency={userCurrency}
-                      onSelect={() => {}}
+                      onSelect={() => {
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(tx.id)) next.delete(tx.id)
+                          else next.add(tx.id)
+                          return next
+                        })
+                      }}
                       showPayee
                       onClick={(clickedTx) => {
-                        // The opening-balance row is synthetic; the desktop
-                        // table makes it non-clickable and mobile must match.
                         if (clickedTx.source === 'opening_balance') return
+                        if (selectedIds.size > 0 && canWrite && !clickedTx.virtual) {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(clickedTx.id)) next.delete(clickedTx.id)
+                            else next.add(clickedTx.id)
+                            return next
+                          })
+                          return
+                        }
                         if (!clickedTx.is_shared && canWrite) {
                           setEditingTx(clickedTx)
                           setDialogOpen(true)
@@ -1593,31 +1837,134 @@ export default function AccountDetailPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b">
-                    <th className="px-2 sm:px-4 py-3 text-left font-medium whitespace-nowrap">{t('transactions.date')}</th>
-                    <th className="px-2 sm:px-4 py-3 text-left font-medium">{t('transactions.description')}</th>
-                    <th className="px-2 sm:px-4 py-3 text-left font-medium hidden md:table-cell">{t('transactions.category')}</th>
-                    <th className="px-2 sm:px-4 py-3 text-right font-medium whitespace-nowrap">{t('transactions.amount')}</th>
-                    <th className="px-2 sm:px-4 py-3 text-right font-medium hidden sm:table-cell whitespace-nowrap">{t('accounts.runningBalance')}</th>
+                  <tr className="border-b bg-muted/30">
+                    {canWrite && (
+                      <th className="w-10 px-3 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          ref={(el) => { if (el) el.indeterminate = someSelected }}
+                          onChange={toggleSelectAll}
+                          className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                          title="Seleccionar todo"
+                        />
+                      </th>
+                    )}
+                    <th
+                      onClick={() => toggleSort('date')}
+                      className="px-2 sm:px-4 py-3 text-left font-medium whitespace-nowrap cursor-pointer select-none hover:text-foreground group"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>{t('transactions.date')}</span>
+                        {sortBy === 'date' ? (
+                          sortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-0 group-hover:opacity-40 transition-opacity" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => toggleSort('description')}
+                      className="px-2 sm:px-4 py-3 text-left font-medium cursor-pointer select-none hover:text-foreground group"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>{t('transactions.description')}</span>
+                        {sortBy === 'description' ? (
+                          sortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-0 group-hover:opacity-40 transition-opacity" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => toggleSort('category')}
+                      className="px-2 sm:px-4 py-3 text-left font-medium hidden md:table-cell cursor-pointer select-none hover:text-foreground group"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>{t('transactions.category')}</span>
+                        {sortBy === 'category' ? (
+                          sortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-0 group-hover:opacity-40 transition-opacity" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => toggleSort('amount')}
+                      className="px-2 sm:px-4 py-3 text-right font-medium whitespace-nowrap cursor-pointer select-none hover:text-foreground group"
+                    >
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span>{t('transactions.amount')}</span>
+                        {sortBy === 'amount' ? (
+                          sortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-0 group-hover:opacity-40 transition-opacity" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => toggleSort('balance')}
+                      className="px-2 sm:px-4 py-3 text-right font-medium hidden sm:table-cell whitespace-nowrap cursor-pointer select-none hover:text-foreground group"
+                    >
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span>{t('accounts.runningBalance')}</span>
+                        {sortBy === 'balance' ? (
+                          sortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-0 group-hover:opacity-40 transition-opacity" />
+                        )}
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {displayRows.map((tx) => {
+                  {filteredAndSortedRows.map((tx) => {
                     const isOpening = tx.source === 'opening_balance'
                     const isTransfer = !!tx.transfer_pair_id
                     const isIgnored = tx.is_ignored
                     const isVirtual = tx.virtual === true
+                    const isSelected = selectedIds.has(tx.id)
                     return (
                       <tr
                         key={tx.id}
-                        className={`border-b last:border-0 transition-colors ${isOpening ? 'bg-muted/60' : (canWrite && !isVirtual) ? 'hover:bg-muted cursor-pointer' : ''} ${isVirtual ? 'opacity-80' : ''}`}
+                        className={`border-b last:border-0 transition-colors ${
+                          isSelected ? 'bg-primary/10' : isOpening ? 'bg-muted/60' : (canWrite && !isVirtual) ? 'hover:bg-muted cursor-pointer' : ''
+                        } ${isVirtual ? 'opacity-80' : ''}`}
                         onClick={() => {
                           if (!isOpening && !isVirtual && canWrite) {
-                            setEditingTx(tx)
-                            setDialogOpen(true)
+                            if (selectedIds.size > 0) {
+                              setSelectedIds((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(tx.id)) next.delete(tx.id)
+                                else next.add(tx.id)
+                                return next
+                              })
+                            } else {
+                              setEditingTx(tx)
+                              setDialogOpen(true)
+                            }
                           }
                         }}
                       >
+                        {canWrite && (
+                          <td className="w-10 px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                            {!isOpening && !isVirtual ? (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  setSelectedIds((prev) => {
+                                    const next = new Set(prev)
+                                    if (next.has(tx.id)) next.delete(tx.id)
+                                    else next.add(tx.id)
+                                    return next
+                                  })
+                                }}
+                                className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                              />
+                            ) : null}
+                          </td>
+                        )}
                         <td className="px-3 sm:px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                           {formatDateStr(tx.date, dateLocale)}
                         </td>
@@ -1769,6 +2116,97 @@ export default function AccountDetailPage() {
           loading={ccSettingsMutation.isPending}
         />
       )}
+
+      {/* Floating Bulk Selection Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className={cn(
+          "fixed bottom-0 right-0 z-40 pb-4 pointer-events-none transition-[left] duration-300 ease-in-out",
+          sidebarCollapsed ? 'lg:left-16' : 'lg:left-60',
+          "left-0",
+        )}>
+          <div className="mx-auto max-w-4xl px-3 md:px-6 pointer-events-auto">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-card/95 backdrop-blur-md border border-border shadow-2xl rounded-2xl p-2.5 px-4">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center justify-center size-6 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+                  {selectedIds.size}
+                </span>
+                <span className="text-sm font-medium text-foreground">
+                  {t('transactions.selectedCount', '{{count}} seleccionadas', { count: selectedIds.size })}
+                </span>
+                <span className="text-xs text-muted-foreground font-mono hidden sm:inline">
+                  ({mask(formatCurrency(Math.abs(selectedTotal), userCurrency, locale))})
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Categorize */}
+                <CategorySelect
+                  value={bulkCategory}
+                  onChange={(next) => {
+                    setBulkCategory(next)
+                    if (next) {
+                      bulkCategorizeMutation.mutate({ ids: Array.from(selectedIds), categoryId: next })
+                    }
+                  }}
+                  categories={categoriesList ?? []}
+                  groups={categoryGroupsList ?? []}
+                  placeholder={t('transactions.selectCategory', 'Cambiar categoría...')}
+                  disabled={bulkCategorizeMutation.isPending}
+                  className="w-44 h-8 text-xs bg-muted/60"
+                  contentProps={{ side: 'top', sideOffset: 8 }}
+                />
+
+                {/* Delete */}
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setBulkDeleteConfirmOpen(true)}
+                  disabled={bulkDeleteMutation.isPending}
+                  className="h-8 px-3 text-xs"
+                >
+                  <Trash2 className="h-3.5 w-3.5 sm:mr-1.5" />
+                  <span className="hidden sm:inline">{t('common.delete', 'Eliminar')}</span>
+                </Button>
+
+                {/* Deselect */}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setSelectedIds(new Set()); setBulkCategory('') }}
+                  className="h-8 w-8 p-0"
+                  title="Deseleccionar todo"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete confirmation dialog */}
+      <Dialog open={bulkDeleteConfirmOpen} onOpenChange={setBulkDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('transactions.bulkDeleteTitle', '¿Eliminar {{count}} transacciones?', { count: selectedIds.size })}</DialogTitle>
+            <DialogDescription>
+              {t('transactions.bulkDeleteDescription', 'Esto elimina permanentemente las transacciones seleccionadas. No se puede deshacer.')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setBulkDeleteConfirmOpen(false)}>
+              {t('common.cancel', 'Cancelar')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => bulkDeleteMutation.mutate()}
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending ? t('common.loading', 'Eliminando...') : t('common.delete', 'Eliminar')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -18,3 +18,7 @@ docker-compose.override.yml
 # downloaded ONNX embedding models, transaction attachments). User data
 # — never commit.
 backend/data/
+
+*.pdf
+*_text.txt
+*.csv
