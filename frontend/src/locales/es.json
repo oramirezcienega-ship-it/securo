@@ -1989,7 +1989,8 @@
     "range30d": "30D",
     "customRange": "Rango personalizado",
     "pickCustomRange": "Elige una fecha de inicio y fin",
-    "loadError": "No se pudo cargar el informe"
+    "loadError": "No se pudo cargar el informe",
+    "expenseBreakdown": "An?lisis de Gastos"
   },
   "payees": {
     "noPayeeFound": "No se encontró ningún beneficiario.",

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { useQuery } from '@tanstack/react-query'
@@ -18,7 +18,12 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
-import { AlertCircle, HelpCircle, X } from 'lucide-react'
+import { AlertCircle, HelpCircle, X, CreditCard } from 'lucide-react'
+import { ExpenseBreakdown } from '@/components/reports/ExpenseBreakdown'
+import { accounts as accountsApi } from '@/lib/api'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { format, addMonths, addDays } from 'date-fns'
+import type { Account } from '@/types'
 import { reports } from '@/lib/api'
 import { extractApiError } from '@/lib/api-errors'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -173,6 +178,11 @@ const REPORT_TABS: ReportTab[] = [
     rangeOptions: MONEY_MAP_RANGE_OPTIONS, intervalOptions: HISTORICAL_INTERVAL_OPTIONS,
     supportsCustomRange: true, fallbackRangeKey: '3m', fallbackInterval: 'monthly',
   },
+  {
+    key: 'expense_breakdown', labelKey: 'reports.expenseBreakdown', enabled: true,
+    rangeOptions: MONEY_MAP_RANGE_OPTIONS, intervalOptions: HISTORICAL_INTERVAL_OPTIONS,
+    supportsCustomRange: true, fallbackRangeKey: '3m', fallbackInterval: 'monthly',
+  },
 ]
 
 export default function ReportsPage() {
@@ -192,6 +202,12 @@ export default function ReportsPage() {
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const [activeTab, setActiveTab] = useState('net_worth')
+  const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('all')
+
+  const { data: accountsList = [] } = useQuery<Account[]>({
+    queryKey: ['accounts'],
+    queryFn: () => accountsApi.list(),
+  })
   const [compositionView, setCompositionView] = useState<string>('netWorth')
   const [sparklineView, setSparklineView] = useState<'byExpenses' | 'byIncome'>('byExpenses')
   const [sparklinePage, setSparklinePage] = useState(0)
@@ -200,7 +216,22 @@ export default function ReportsPage() {
   // Active Collection filter (issue #105): scope all report tabs to its
   // accounts; net worth also includes the collection's wallets' assets.
   const { activeAccountIds, activeWalletIds } = useCollectionFilter()
-  const acctIds = activeAccountIds ?? undefined
+  const effectiveAccountIds: string[] | undefined = useMemo(() => {
+    if (selectedAccountFilter === 'all') {
+      return activeAccountIds ?? undefined
+    }
+    if (selectedAccountFilter === 'type:credit_card') {
+      const ids = accountsList.filter((a) => a.type === 'credit_card').map((a) => a.id)
+      return ids.length > 0 ? ids : undefined
+    }
+    if (selectedAccountFilter === 'type:checking') {
+      const ids = accountsList.filter((a) => a.type === 'checking').map((a) => a.id)
+      return ids.length > 0 ? ids : undefined
+    }
+    return [selectedAccountFilter]
+  }, [selectedAccountFilter, accountsList, activeAccountIds])
+
+  const acctIds = effectiveAccountIds
   const walletIds = activeWalletIds ?? undefined
   // Wallet-only collection (active, zero accounts): the account-based reports
   // (income/expenses, cash flow) have no data — only net worth (which includes
@@ -221,6 +252,32 @@ export default function ReportsPage() {
   const intervalOptions = currentTab.intervalOptions
   const isCustomRange = supportsCustomRange && rangeKey === CUSTOM_RANGE_KEY
   const hasCustomRange = isCustomRange && !!customFrom && !!customTo
+
+  const isExpenseBreakdown = activeTab === 'expense_breakdown'
+
+  const expenseDateRange = useMemo(() => {
+    if (hasCustomRange) {
+      return { start: customFrom, end: customTo }
+    }
+    const today = new Date()
+    const end = localDateString(today)
+    if (rangeKey === '30d') {
+      return { start: format(addDays(today, -30), 'yyyy-MM-dd'), end }
+    }
+    if (rangeKey === '3m') {
+      return { start: format(addMonths(today, -3), 'yyyy-MM-dd'), end }
+    }
+    if (rangeKey === '6m') {
+      return { start: format(addMonths(today, -6), 'yyyy-MM-dd'), end }
+    }
+    if (rangeKey === 'ytd') {
+      return { start: `${today.getFullYear()}-01-01`, end }
+    }
+    if (rangeKey === '1y' || rangeKey === '12m') {
+      return { start: format(addMonths(today, -12), 'yyyy-MM-dd'), end }
+    }
+    return { start: format(addMonths(today, -3), 'yyyy-MM-dd'), end }
+  }, [hasCustomRange, customFrom, customTo, rangeKey])
   const selectedRange = rangeOptions.find((r) => r.key === rangeKey) ?? rangeOptions[0]
   // In custom mode, translate the picked span into an equivalent `months`
   // value so downstream logic (interval bucketing, forecast fan-out) keeps
@@ -271,7 +328,7 @@ export default function ReportsPage() {
           ? reports.incomeExpenses(months, interval, acctIds, period, days, apiStart, apiEnd)
           : reports.netWorth(months, interval, acctIds, walletIds, period, apiStart, apiEnd),
     // Only request a custom report with both committed endpoints.
-    enabled: currentTab.enabled && !(noAccounts && activeTab !== 'net_worth') && (!isCustomRange || hasCustomRange),
+    enabled: currentTab.enabled && !(noAccounts && activeTab !== 'net_worth') && (!isCustomRange || hasCustomRange) && activeTab !== 'expense_breakdown',
   })
 
   const summary = data?.summary
@@ -529,7 +586,32 @@ export default function ReportsPage() {
         section={t('reports.section')}
         title={t(currentTab.labelKey)}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {/* Account Selector */}
+            <div className="min-w-[160px] sm:min-w-[190px]">
+              <Select value={selectedAccountFilter} onValueChange={setSelectedAccountFilter}>
+                <SelectTrigger className="h-8 text-xs bg-card border-border">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <CreditCard className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <SelectValue placeholder="Todas las cuentas" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las cuentas</SelectItem>
+                  {accountsList.some((a) => a.type === 'credit_card') && (
+                    <SelectItem value="type:credit_card">💳 Todas las tarjetas</SelectItem>
+                  )}
+                  {accountsList.some((a) => a.type === 'checking') && (
+                    <SelectItem value="type:checking">🏦 Cuentas de débito</SelectItem>
+                  )}
+                  {accountsList.map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {isCashFlow && (
               <div
                 className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
@@ -667,6 +749,19 @@ export default function ReportsPage() {
       )}
 
       {!isError && (
+      <>
+      {isExpenseBreakdown && (
+        <ExpenseBreakdown
+          accountIds={effectiveAccountIds}
+          startDate={expenseDateRange.start}
+          endDate={expenseDateRange.end}
+          accountsList={accountsList}
+          userCurrency={userCurrency}
+          locale={locale}
+        />
+      )}
+
+      {!isExpenseBreakdown && (
       <>
       {/* Hero Card */}
       <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
@@ -1564,6 +1659,8 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+      </>
+      )}
       </>
       )}
       </>
