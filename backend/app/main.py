@@ -117,9 +117,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+cors_origins = [settings.frontend_url]
+for extra_origin in [
+    "https://securo.saucedamx.com",
+    "https://finanzas.saucedamx.com",
+    "http://100.96.122.113:3000",
+    "http://localhost:3000",
+]:
+    if extra_origin not in cors_origins:
+        cors_origins.append(extra_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=cors_origins,
+    allow_origin_regex=r"https?://.*(saucedamx\.com|100\.96\.122\.113|192\.168\..*|localhost).*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
