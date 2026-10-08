@@ -23,6 +23,7 @@ import type {
   DeductionKind,
   InstallmentInput,
   Invoice,
+  CreditCommitmentsResponse,
   InvoiceDirection,
   InvoiceDocumentPayload,
   InvoiceFacets,
@@ -1524,6 +1525,25 @@ export const reports = {
   cashFlow: async (months = 6, interval = 'daily', baseline = false, accountIds?: string[]): Promise<ReportResponse> => {
     const extra = acctIdsParam(accountIds)
     const { data } = await api.get('/reports/cash-flow', { params: { months, interval, baseline, ...(extra.params ?? {}) }, ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}) })
+    return data
+  },
+  creditCommitments: async (params?: {
+    account_id?: string
+    asset_id?: string
+    category_id?: string
+  }): Promise<CreditCommitmentsResponse> => {
+    const { data } = await api.get('/reports/credit-commitments', { params })
+    return data
+  },
+  updateCreditCommitment: async (
+    id: string,
+    payload: {
+      description?: string
+      category_id?: string | null
+      asset_id?: string | null
+    },
+  ): Promise<{ status: string; id: string; description: string }> => {
+    const { data } = await api.patch(`/reports/credit-commitments/${id}`, payload)
     return data
   },
 }

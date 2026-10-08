@@ -20,6 +20,7 @@ import {
 } from 'recharts'
 import { AlertCircle, HelpCircle, X, CreditCard } from 'lucide-react'
 import { ExpenseBreakdown } from '@/components/reports/ExpenseBreakdown'
+import { CreditCommitments } from '@/components/reports/CreditCommitments'
 import { accounts as accountsApi } from '@/lib/api'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { format, addMonths, addDays } from 'date-fns'
@@ -191,6 +192,11 @@ const REPORT_TABS: ReportTab[] = [
     key: 'expense_breakdown', labelKey: 'reports.expenseBreakdown', enabled: true,
     rangeOptions: EXPENSE_RANGE_OPTIONS, intervalOptions: HISTORICAL_INTERVAL_OPTIONS,
     supportsCustomRange: true, fallbackRangeKey: 'this_month', fallbackInterval: 'monthly',
+  },
+  {
+    key: 'credits', labelKey: 'reports.credits', enabled: true,
+    rangeOptions: EXPENSE_RANGE_OPTIONS, intervalOptions: HISTORICAL_INTERVAL_OPTIONS,
+    supportsCustomRange: false, fallbackRangeKey: 'this_month', fallbackInterval: 'monthly',
   },
 ]
 
@@ -399,7 +405,7 @@ export default function ReportsPage() {
           ? reports.incomeExpenses(months, interval, acctIds, period, days, apiStart, apiEnd)
           : reports.netWorth(months, interval, acctIds, walletIds, period, apiStart, apiEnd),
     // Only request a custom report with both committed endpoints.
-    enabled: currentTab.enabled && !(noAccounts && activeTab !== 'net_worth') && (!isCustomRange || hasCustomRange) && activeTab !== 'expense_breakdown',
+    enabled: currentTab.enabled && !(noAccounts && activeTab !== 'net_worth') && (!isCustomRange || hasCustomRange) && activeTab !== 'expense_breakdown' && activeTab !== 'credits',
   })
 
   const summary = data?.summary
@@ -657,6 +663,7 @@ export default function ReportsPage() {
         section={t('reports.section')}
         title={t(currentTab.labelKey)}
         action={
+          activeTab === 'credits' ? null : (
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             {/* Account Selector */}
             <div className="min-w-[160px] sm:min-w-[190px]">
@@ -773,6 +780,7 @@ export default function ReportsPage() {
               ))}
             </div>
           </div>
+          )
         }
       />
 
@@ -835,7 +843,11 @@ export default function ReportsPage() {
         />
       )}
 
-      {!isExpenseBreakdown && (
+      {activeTab === 'credits' && (
+        <CreditCommitments />
+      )}
+
+      {!isExpenseBreakdown && activeTab !== 'credits' && (
       <>
       {/* Hero Card */}
       <div className="bg-card rounded-xl border border-border shadow-sm mb-5">

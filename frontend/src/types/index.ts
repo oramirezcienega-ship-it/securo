@@ -1771,3 +1771,81 @@ export interface ReconciliationHistoryEvent {
   transaction_id?: string | null
   transaction_description?: string | null
 }
+
+
+export interface CreditCommitmentItem {
+  id: string
+  account_id: string
+  account_name: string
+  description: string
+  original_description: string
+  monthly_amount: number
+  installment_number: number
+  total_installments: number
+  remaining_months: number
+  total_initial: number
+  total_paid: number
+  remaining_amount: number
+  date: string
+  category_id: string | null
+  category_name: string | null
+  category_color: string | null
+  category_icon: string | null
+  asset_id: string | null
+  asset_name: string | null
+}
+
+export interface CreditCommitmentMonthTimeline {
+  month: string
+  month_label: string
+  relative_month: number
+  total_committed: number
+  active_items_count: number
+  items: {
+    id: string
+    description: string
+    account_name: string
+    monthly_amount: number
+    installment: string
+    category_name: string | null
+    asset_name: string | null
+  }[]
+}
+
+export interface CreditCommitmentsResponse {
+  summary: {
+    total_remaining: number
+    total_initial: number
+    total_paid: number
+    monthly_current_month: number
+    monthly_future_total: number
+    active_count: number
+    completed_count: number
+    max_remaining_months: number
+    by_account: {
+      account_id: string
+      account_name: string
+      total_remaining: number
+      monthly_payment: number
+      count: number
+    }[]
+    by_category: {
+      category_id: string
+      category_name: string
+      category_color: string | null
+      category_icon: string | null
+      total_remaining: number
+      monthly_payment: number
+      count: number
+    }[]
+    by_asset: {
+      asset_id: string | null
+      asset_name: string
+      total_remaining: number
+      monthly_payment: number
+      count: number
+    }[]
+  }
+  timeline: CreditCommitmentMonthTimeline[]
+  items: CreditCommitmentItem[]
+}
