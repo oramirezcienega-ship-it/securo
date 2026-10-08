@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { getAccountName } from '@/lib/account-utils'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -23,6 +23,7 @@ import { TransactionDialog, type TransactionSavePayload } from '@/components/tra
 import { extractApiError } from '@/lib/api-errors'
 import { TransferDialog } from '@/components/transfer-dialog'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -57,6 +58,68 @@ function defaultTo() {
   const now = new Date()
   return localDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0))
 }
+
+const ACCOUNT_RANGE_OPTIONS = [
+  { key: 'this_month' },
+  { key: 'last_month' },
+  { key: '30d' },
+  { key: '3m' },
+  { key: '6m' },
+  { key: 'ytd' },
+  { key: '1y' },
+] as const
+
+const RANGE_LABELS: Record<string, string> = {
+  this_month: 'rangeThisMonth',
+  last_month: 'rangeLastMonth',
+  '30d': 'range30d',
+  '3m': 'range3m',
+  '6m': 'range6m',
+  '1y': 'range1y',
+  ytd: 'rangeYtd',
+  custom: 'customRange',
+}
+
+function computeAccountPresetRange(presetKey: string): { from: string; to: string } {
+  const today = new Date()
+  if (presetKey === 'this_month') {
+    const start = localDateString(new Date(today.getFullYear(), today.getMonth(), 1))
+    const end = localDateString(new Date(today.getFullYear(), today.getMonth() + 1, 0))
+    return { from: start, to: end }
+  }
+  if (presetKey === 'last_month') {
+    const start = localDateString(new Date(today.getFullYear(), today.getMonth() - 1, 1))
+    const end = localDateString(new Date(today.getFullYear(), today.getMonth(), 0))
+    return { from: start, to: end }
+  }
+  if (presetKey === '30d') {
+    const start = format(addDays(today, -30), 'yyyy-MM-dd')
+    const end = localDateString(today)
+    return { from: start, to: end }
+  }
+  if (presetKey === '3m') {
+    const start = format(addMonths(today, -3), 'yyyy-MM-dd')
+    const end = localDateString(today)
+    return { from: start, to: end }
+  }
+  if (presetKey === '6m') {
+    const start = format(addMonths(today, -6), 'yyyy-MM-dd')
+    const end = localDateString(today)
+    return { from: start, to: end }
+  }
+  if (presetKey === 'ytd') {
+    const start = `${today.getFullYear()}-01-01`
+    const end = localDateString(new Date(today.getFullYear(), today.getMonth() + 1, 0))
+    return { from: start, to: end }
+  }
+  if (presetKey === '1y') {
+    const start = format(addMonths(today, -12), 'yyyy-MM-dd')
+    const end = localDateString(today)
+    return { from: start, to: end }
+  }
+  return { from: defaultFrom(), to: defaultTo() }
+}
+
 
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate()
@@ -283,8 +346,38 @@ export default function AccountDetailPage() {
     })
   }
   const [searchQuery, setSearchQuery] = useState('')
-  const [filterCategoryId, setFilterCategoryId] = useState<string>('all')
-  const [filterType, setFilterType] = useState<'all' | 'debit' | 'credit' | 'transfer' | 'ignored'>('all')
+  const [filterCategoryId, setFilterCategoryId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(`securo.account_detail.${id}.category_id`) || 'all'
+    } catch {
+      return 'all'
+    }
+  })
+  const [filterType, setFilterType] = useState<'all' | 'debit' | 'credit' | 'transfer' | 'ignored'>(() => {
+    try {
+      return (localStorage.getItem(`securo.account_detail.${id}.type`) as any) || 'all'
+    } catch {
+      return 'all'
+    }
+  })
+
+  const handleFilterCategoryChange = (val: string) => {
+    setFilterCategoryId(val)
+    if (id) {
+      try {
+        localStorage.setItem(`securo.account_detail.${id}.category_id`, val)
+      } catch {}
+    }
+  }
+
+  const handleFilterTypeChange = (val: any) => {
+    setFilterType(val)
+    if (id) {
+      try {
+        localStorage.setItem(`securo.account_detail.${id}.type`, val)
+      } catch {}
+    }
+  }
   const [sortBy, setSortBy] = useState<'date' | 'description' | 'category' | 'amount' | 'balance'>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -344,17 +437,166 @@ export default function AccountDetailPage() {
     resetForm(null)
     setDialogOpen(true)
   }
-  const [filterFrom, setFilterFrom] = useState(defaultFrom)
-  const [filterTo, setFilterTo] = useState(defaultTo)
+  const [rangePreset, setRangePreset] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(`securo.account_detail.${id}.range_preset`) ||
+                    localStorage.getItem('securo.account_detail.global.range_preset')
+      if (saved) return saved
+    } catch {}
+    return 'this_month'
+  })
+
+  const [filterFrom, setFilterFrom] = useState<string>(() => {
+    try {
+      const savedPreset = localStorage.getItem(`securo.account_detail.${id}.range_preset`) ||
+                          localStorage.getItem('securo.account_detail.global.range_preset')
+      if (savedPreset && savedPreset !== 'custom') {
+        return computeAccountPresetRange(savedPreset).from
+      }
+      const saved = localStorage.getItem(`securo.account_detail.${id}.from`)
+      if (saved) return saved
+    } catch {}
+    return defaultFrom()
+  })
+
+  const [filterTo, setFilterTo] = useState<string>(() => {
+    try {
+      const savedPreset = localStorage.getItem(`securo.account_detail.${id}.range_preset`) ||
+                          localStorage.getItem('securo.account_detail.global.range_preset')
+      if (savedPreset && savedPreset !== 'custom') {
+        return computeAccountPresetRange(savedPreset).to
+      }
+      const saved = localStorage.getItem(`securo.account_detail.${id}.to`)
+      if (saved) return saved
+    } catch {}
+    return defaultTo()
+  })
+
   const [showPrimary, setShowPrimary] = useState(false)
-  const [filterTouched, setFilterTouched] = useState(false)
-  const handleFilterFromChange = (v: string) => { setFilterTouched(true); setFilterFrom(v) }
-  const handleFilterToChange = (v: string) => { setFilterTouched(true); setFilterTo(v) }
+  const [filterTouched, setFilterTouched] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem(`securo.account_detail.${id}.range_preset`))
+    } catch {
+      return false
+    }
+  })
+
+  const handleSelectPreset = (presetKey: string) => {
+    setRangePreset(presetKey)
+    setFilterTouched(true)
+    const range = computeAccountPresetRange(presetKey)
+    setFilterFrom(range.from)
+    setFilterTo(range.to)
+    if (id) {
+      try {
+        localStorage.setItem(`securo.account_detail.${id}.range_preset`, presetKey)
+        localStorage.setItem(`securo.account_detail.${id}.from`, range.from)
+        localStorage.setItem(`securo.account_detail.${id}.to`, range.to)
+        localStorage.setItem('securo.account_detail.global.range_preset', presetKey)
+      } catch {}
+    }
+  }
+
+  const handleCustomRangeApply = (f: string, toDate: string) => {
+    setRangePreset('custom')
+    setFilterTouched(true)
+    setFilterFrom(f)
+    setFilterTo(toDate)
+    if (id) {
+      try {
+        localStorage.setItem(`securo.account_detail.${id}.range_preset`, 'custom')
+        localStorage.setItem(`securo.account_detail.${id}.from`, f)
+        localStorage.setItem(`securo.account_detail.${id}.to`, toDate)
+        localStorage.setItem('securo.account_detail.global.range_preset', 'custom')
+      } catch {}
+    }
+  }
+
+  const handleFilterFromChange = (v: string) => {
+    setRangePreset('custom')
+    setFilterTouched(true)
+    setFilterFrom(v)
+    if (id) {
+      try {
+        localStorage.setItem(`securo.account_detail.${id}.range_preset`, 'custom')
+        localStorage.setItem(`securo.account_detail.${id}.from`, v)
+      } catch {}
+    }
+  }
+
+  const handleFilterToChange = (v: string) => {
+    setRangePreset('custom')
+    setFilterTouched(true)
+    setFilterTo(v)
+    if (id) {
+      try {
+        localStorage.setItem(`securo.account_detail.${id}.range_preset`, 'custom')
+        localStorage.setItem(`securo.account_detail.${id}.to`, v)
+      } catch {}
+    }
+  }
+
+  const handleClearFilters = () => {
+    setFilterTouched(false)
+    setRangePreset('this_month')
+    setFilterCategoryId('all')
+    setFilterType('all')
+    setSearchQuery('')
+    if (id) {
+      try {
+        localStorage.removeItem(`securo.account_detail.${id}.range_preset`)
+        localStorage.removeItem(`securo.account_detail.${id}.from`)
+        localStorage.removeItem(`securo.account_detail.${id}.to`)
+        localStorage.removeItem(`securo.account_detail.${id}.category_id`)
+        localStorage.removeItem(`securo.account_detail.${id}.type`)
+      } catch {}
+    }
+    if (account?.type === 'credit_card') {
+      const { start, end } = defaultCycleForCreditCard(
+        account.statement_close_day,
+        account.payment_due_day,
+        new Date(),
+      )
+      setFilterFrom(start)
+      setFilterTo(end)
+    } else {
+      setFilterFrom(defaultFrom())
+      setFilterTo(defaultTo())
+    }
+  }
   const { data: account, isLoading: accountLoading } = useQuery({
     queryKey: ['accounts', id],
     queryFn: () => accounts.get(id!),
     enabled: !!id,
   })
+
+  useEffect(() => {
+    if (!id) return
+    try {
+      if (account?.type !== 'credit_card') {
+        const savedPreset = localStorage.getItem(`securo.account_detail.${id}.range_preset`) ||
+                            localStorage.getItem('securo.account_detail.global.range_preset') ||
+                            'this_month'
+        setRangePreset(savedPreset)
+        if (savedPreset !== 'custom') {
+          const r = computeAccountPresetRange(savedPreset)
+          setFilterFrom(r.from)
+          setFilterTo(r.to)
+        } else {
+          const sf = localStorage.getItem(`securo.account_detail.${id}.from`)
+          const st = localStorage.getItem(`securo.account_detail.${id}.to`)
+          if (sf && st) {
+            setFilterFrom(sf)
+            setFilterTo(st)
+          }
+        }
+      }
+      const savedCat = localStorage.getItem(`securo.account_detail.${id}.category_id`)
+      setFilterCategoryId(savedCat || 'all')
+      const savedType = localStorage.getItem(`securo.account_detail.${id}.type`)
+      setFilterType((savedType as any) || 'all')
+    } catch {}
+  }, [id, account?.type])
 
   // Bills (faturas) from the provider's bills feed — issue #92. Only fetched
   // for CC accounts; non-CC and CC-without-bills both return [] so the UI
@@ -883,7 +1125,7 @@ export default function AccountDetailPage() {
   const resolvedDefaultRange = account?.type === 'credit_card'
     ? defaultCycleForCreditCard(account.statement_close_day, account.payment_due_day, new Date())
     : { start: defaultFrom(), end: defaultTo() }
-  const hasFilters = filterFrom !== resolvedDefaultRange.start || filterTo !== resolvedDefaultRange.end
+  const hasFilters = filterFrom !== resolvedDefaultRange.start || filterTo !== resolvedDefaultRange.end || rangePreset !== 'this_month' || filterCategoryId !== 'all' || filterType !== 'all' || Boolean(searchQuery)
 
   const ignoredCount = useMemo(() => {
     return displayRows.filter((tx) => tx.is_ignored).length
@@ -1154,45 +1396,57 @@ export default function AccountDetailPage() {
               </button>
             </div>
           ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-muted-foreground hidden md:inline">{t('transactions.from')}</label>
-                <DatePickerInput
-                  value={filterFrom}
-                  onChange={handleFilterFromChange}
-                  placeholder={t('transactions.from')}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center rounded-lg border border-border bg-card overflow-x-auto max-w-full">
+                {ACCOUNT_RANGE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => handleSelectPreset(opt.key)}
+                    className={`px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
+                      rangePreset === opt.key
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    {t(`reports.${RANGE_LABELS[opt.key]}`, { defaultValue: opt.key })}
+                  </button>
+                ))}
+                <DateRangePicker
+                  variant="segment"
+                  active={rangePreset === 'custom'}
+                  from={rangePreset === 'custom' ? filterFrom : ''}
+                  to={rangePreset === 'custom' ? filterTo : ''}
+                  defaultFrom={defaultFrom()}
+                  defaultTo={defaultTo()}
+                  onChange={handleCustomRangeApply}
+                  label={t('reports.customRange', 'Personalizado')}
+                  placeholder={t('reports.pickCustomRange', 'Personalizado')}
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-muted-foreground hidden md:inline">{t('transactions.to')}</label>
-                <DatePickerInput
-                  value={filterTo}
-                  onChange={handleFilterToChange}
-                  placeholder={t('transactions.to')}
-                />
-              </div>
-            </>
+              {rangePreset === 'custom' && (
+                <div className="flex items-center gap-1.5">
+                  <DatePickerInput
+                    value={filterFrom}
+                    onChange={handleFilterFromChange}
+                    placeholder={t('transactions.from')}
+                  />
+                  <span className="text-xs text-muted-foreground">-</span>
+                  <DatePickerInput
+                    value={filterTo}
+                    onChange={handleFilterToChange}
+                    placeholder={t('transactions.to')}
+                  />
+                </div>
+              )}
+            </div>
           )}
           {hasFilters && (
             <Button
               variant="ghost"
               size="sm"
               className="text-muted-foreground hover:text-foreground min-h-[44px] min-w-[44px] px-3 shrink-0"
-              onClick={() => {
-                setFilterTouched(false)
-                if (account?.type === 'credit_card') {
-                  const { start, end } = defaultCycleForCreditCard(
-                    account.statement_close_day,
-                    account.payment_due_day,
-                    new Date(),
-                  )
-                  setFilterFrom(start)
-                  setFilterTo(end)
-                } else {
-                  setFilterFrom(defaultFrom())
-                  setFilterTo(defaultTo())
-                }
-              }}
+              onClick={handleClearFilters}
             >
               <X className="h-3.5 w-3.5 sm:mr-1" />
               <span className="hidden sm:inline">{t('transactions.clearFilters')}</span>
@@ -1714,7 +1968,13 @@ export default function AccountDetailPage() {
                   setFilterCategoryId('all')
                   setFilterType('all')
                   setShowIgnored(false)
-                  try { localStorage.setItem('securo.accounts.showIgnored', 'false') } catch {}
+                  try {
+                    localStorage.setItem('securo.accounts.showIgnored', 'false')
+                    if (id) {
+                      localStorage.removeItem(`securo.account_detail.${id}.category_id`)
+                      localStorage.removeItem(`securo.account_detail.${id}.type`)
+                    }
+                  } catch {}
                 }}
                 className="text-xs text-muted-foreground hover:text-foreground h-8 px-2 self-start sm:self-auto"
               >
@@ -1745,7 +2005,7 @@ export default function AccountDetailPage() {
               )}
             </div>
 
-            <Select value={filterCategoryId} onValueChange={setFilterCategoryId}>
+            <Select value={filterCategoryId} onValueChange={handleFilterCategoryChange}>
               <SelectTrigger className="w-[160px] sm:w-[180px] h-9 text-xs sm:text-sm bg-background">
                 <SelectValue placeholder={t('transactions.allCategories', 'Todas las categorías')} />
               </SelectTrigger>
@@ -1763,7 +2023,7 @@ export default function AccountDetailPage() {
               </SelectContent>
             </Select>
 
-            <Select value={filterType} onValueChange={(val: any) => setFilterType(val)}>
+            <Select value={filterType} onValueChange={handleFilterTypeChange}>
               <SelectTrigger className="w-[130px] sm:w-[155px] h-9 text-xs sm:text-sm bg-background">
                 <SelectValue placeholder={t('transactions.allTypes', 'Todos los tipos')} />
               </SelectTrigger>
@@ -1825,6 +2085,12 @@ export default function AccountDetailPage() {
                     setSearchQuery('')
                     setFilterCategoryId('all')
                     setFilterType('all')
+                    if (id) {
+                      try {
+                        localStorage.removeItem(`securo.account_detail.${id}.category_id`)
+                        localStorage.removeItem(`securo.account_detail.${id}.type`)
+                      } catch {}
+                    }
                   }}
                   className="text-xs"
                 >
