@@ -195,9 +195,9 @@ export function CreditCommitments() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <Select value={selectedAccountFilter} onValueChange={setSelectedAccountFilter}>
-            <SelectTrigger className="w-[180px] h-9 text-xs sm:text-sm bg-card border-border">
+            <SelectTrigger className="flex-1 sm:w-[180px] h-9 text-xs sm:text-sm bg-card border-border">
               <SelectValue placeholder={t('reports.allCards', 'Todas las tarjetas')} />
             </SelectTrigger>
             <SelectContent>
@@ -363,9 +363,10 @@ export function CreditCommitments() {
             >
               <XAxis
                 dataKey="month_label"
-                tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                 axisLine={false}
                 tickLine={false}
+                interval="preserveStartEnd"
               />
               <YAxis
                 tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
@@ -469,53 +470,173 @@ export function CreditCommitments() {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[200px]">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <div className="relative w-full sm:w-48">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={t('reports.searchCommitments', 'Buscar deuda, comercio...')}
-                  className="pl-8 h-8 text-xs bg-background"
+                  className="pl-8 h-8 text-xs bg-background w-full"
                 />
               </div>
 
-              <Select value={statusFilter} onValueChange={(val: any) => setStatusFilter(val)}>
-                <SelectTrigger className="w-[125px] h-8 text-xs bg-background">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">{t('reports.statusActive', 'Activas')}</SelectItem>
-                  <SelectItem value="completed">{t('reports.statusCompleted', 'Liquidadas')}</SelectItem>
-                  <SelectItem value="all">{t('reports.statusAll', 'Todas')}</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+                <Select value={statusFilter} onValueChange={(val: any) => setStatusFilter(val)}>
+                  <SelectTrigger className="w-full sm:w-[115px] h-8 text-xs bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">{t('reports.statusActive', 'Activas')}</SelectItem>
+                    <SelectItem value="completed">{t('reports.statusCompleted', 'Liquidadas')}</SelectItem>
+                    <SelectItem value="all">{t('reports.statusAll', 'Todas')}</SelectItem>
+                  </SelectContent>
+                </Select>
 
-              <Select value={selectedAssetFilter} onValueChange={setSelectedAssetFilter}>
-                <SelectTrigger className="w-[145px] h-8 text-xs bg-background">
-                  <SelectValue placeholder={t('reports.filterByAsset', 'Filtrar por Activo')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('reports.allAssets', 'Todos los activos')}</SelectItem>
-                  <SelectItem value="unlinked">{t('reports.unlinkedAsset', 'Sin activo')}</SelectItem>
-                  {assetsList.map((ast) => (
-                    <SelectItem key={ast.id} value={ast.id}>
-                      {ast.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <Select value={selectedAssetFilter} onValueChange={setSelectedAssetFilter}>
+                  <SelectTrigger className="w-full sm:w-[140px] h-8 text-xs bg-background">
+                    <SelectValue placeholder={t('reports.filterByAsset', 'Filtrar por Activo')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('reports.allAssets', 'Todos los activos')}</SelectItem>
+                    <SelectItem value="unlinked">{t('reports.unlinkedAsset', 'Sin activo')}</SelectItem>
+                    {assetsList.map((ast) => (
+                      <SelectItem key={ast.id} value={ast.id}>
+                        {ast.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Table Content */}
+        {/* Content: Mobile Cards (< md) & Desktop Table (>= md) */}
         {filteredItems.length === 0 ? (
           <div className="py-12 text-center text-muted-foreground text-xs">
             {t('reports.noCommitmentsFound', 'No se encontraron compromisos con los filtros seleccionados.')}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {/* Mobile Card List (visible on screens < md) */}
+            <div className="block md:hidden divide-y divide-border/60">
+              {filteredItems.map((item) => {
+                const isCompleted = item.remaining_months === 0
+                const isNu = item.account_name.toLowerCase().includes('nu')
+                return (
+                  <div key={item.id} className="p-3.5 space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-0.5 flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${
+                              isNu
+                                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                                : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                            }`}
+                          >
+                            <CreditCard size={10} />
+                            {item.account_name.split(' ')[0]}
+                          </span>
+                          <span className="font-semibold text-xs text-foreground truncate" title={item.description}>
+                            {item.description}
+                          </span>
+                        </div>
+                        {item.original_description !== item.description && (
+                          <p className="text-[10px] text-muted-foreground truncate">{item.original_description}</p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditModal(item)}
+                        className="h-7 w-7 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil size={13} />
+                      </Button>
+                    </div>
+
+                    {/* Amounts Row */}
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-muted/30 p-2 rounded-lg border border-border/50">
+                      <div>
+                        <span className="text-[10px] text-muted-foreground block">{t('reports.colMonthly', 'Mensualidad')}</span>
+                        <span className="font-semibold text-foreground">
+                          {privacyMode ? MASK : formatCurrency(item.monthly_amount, 'MXN', locale)}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-muted-foreground block">{t('reports.colRemaining', 'Pendiente')}</span>
+                        <span className={`font-bold ${item.remaining_amount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600'}`}>
+                          {privacyMode ? MASK : formatCurrency(item.remaining_amount, 'MXN', locale)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar & Details */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-muted-foreground">
+                          {t('reports.installmentOf', 'Cuota {{current}} de {{total}}', {
+                            current: item.installment_number,
+                            total: item.total_installments,
+                          })}
+                        </span>
+                        {!isCompleted ? (
+                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                            {t('reports.remMonthsBadge', 'Faltan {{count}} m', { count: item.remaining_months })}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 font-semibold">{t('reports.liquidated', 'Liquidado')}</span>
+                        )}
+                      </div>
+                      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${isCompleted ? 'bg-emerald-500' : 'bg-primary'}`}
+                          style={{
+                            width: `${Math.round((item.installment_number / item.total_installments) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground/80">
+                        <span>{t('reports.initialTotal', 'Original')}: {privacyMode ? MASK : formatCurrency(item.total_initial, 'MXN', locale)}</span>
+                        <span>{t('reports.paid', 'Pagado')}: {privacyMode ? MASK : formatCurrency(item.total_paid, 'MXN', locale)}</span>
+                      </div>
+                    </div>
+
+                    {/* Meta badges: Category & Asset */}
+                    <div className="flex items-center justify-between gap-1 pt-0.5">
+                      {item.category_name ? (
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <CategoryIcon icon={item.category_icon} color={item.category_color} size="xs" />
+                          <span className="truncate max-w-[120px]">{item.category_name}</span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground/60">—</span>
+                      )}
+
+                      {item.asset_name ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/40">
+                          <Building size={10} />
+                          {item.asset_name}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(item)}
+                          className="text-[10px] text-primary hover:underline font-medium"
+                        >
+                          + {t('reports.linkAsset', 'Vincular activo')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Desktop Table (hidden on mobile, visible on md+) */}
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase text-[10px] tracking-wider">
                 <tr>
@@ -676,12 +797,13 @@ export function CreditCommitments() {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </>
+      )}
+    </div>
 
-      {/* Edit Commitment Dialog */}
-      <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
-        <DialogContent className="sm:max-w-md">
+    {/* Edit Commitment Dialog */}
+    <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
+      <DialogContent className="sm:max-w-md max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <Pencil className="h-4 w-4 text-primary" />
