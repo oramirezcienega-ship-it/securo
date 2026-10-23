@@ -1,7 +1,7 @@
 """add stable_external_id to accounts (Enable Banking reauth duplication)
 
-Revision ID: 097
-Revises: 096
+Revision ID: 098
+Revises: 097
 Create Date: 2026-10-02
 
 Enable Banking identifies an account by a `uid` that is scoped to a single
@@ -22,8 +22,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "097"
-down_revision: Union[str, None] = "096"
+revision: str = "098"
+down_revision: Union[str, None] = "097"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

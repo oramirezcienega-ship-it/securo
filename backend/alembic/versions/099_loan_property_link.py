@@ -1,7 +1,7 @@
 """link loan accounts to the real-estate asset they are secured against
 
-Revision ID: 098
-Revises: 097
+Revision ID: 099
+Revises: 098
 """
 
 import sqlalchemy as sa
@@ -9,8 +9,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "098"
-down_revision = "097"
+revision = "099"
+down_revision = "098"
 branch_labels = None
 depends_on = None
 
