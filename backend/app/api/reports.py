@@ -1,8 +1,3 @@
-from pydantic import BaseModel
-from sqlalchemy import text, select
-from dateutil.relativedelta import relativedelta
-from app.models.transaction import Transaction
-from app.core.workspace_context import current_writable_workspace
 import uuid
 from datetime import date
 from typing import Optional
@@ -10,10 +5,18 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.app_clock import app_today
 from app.core.database import get_async_session
 from app.core.workspace_context import WorkspaceContext, current_workspace
 from app.schemas.report import ReportResponse
 from app.services import report_service
+
+from pydantic import BaseModel
+from sqlalchemy import text, select
+from dateutil.relativedelta import relativedelta
+from app.models.transaction import Transaction
+from app.core.workspace_context import current_writable_workspace
+
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -72,7 +75,12 @@ def _resolve_custom_range(
             status_code=422,
             detail="end_date must be on or after start_date",
         )
-    if end_date > date.today():
+    # The app's calendar, not the host clock: the workspace's request runs
+    # on its own timezone (see the `current_workspace` dependency), and the
+    # service below builds the same window from `app_today()`. Comparing
+    # against a different calendar would reject the workspace's own today
+    # or accept a date the workspace has not reached yet.
+    if end_date > app_today():
         raise HTTPException(
             status_code=422,
             detail="end_date must be on or before today",
@@ -159,17 +167,6 @@ async def get_cash_flow(
         session, ctx.workspace.id, ctx.user_id, months, interval, ctx.user.primary_currency,
         baseline=baseline, account_ids=account_ids,
     )
-
-
-def _clean_uuid_param(val) -> Optional[uuid.UUID]:
-    if isinstance(val, uuid.UUID):
-        return val
-    if isinstance(val, str) and val.strip() and val.strip().lower() not in ("none", "null", ""):
-        try:
-            return uuid.UUID(val.strip())
-        except (ValueError, AttributeError):
-            return None
-    return None
 
 
 class CreditCommitmentUpdate(BaseModel):

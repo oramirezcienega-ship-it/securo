@@ -821,6 +821,7 @@
     "netWorth": "純資産",
     "netWorthTooltip": "口座+投資から、未払いのクレジットカード請求を差し引いた額。",
     "creditCardBalance": "未払いのクレジットカード請求",
+    "loanBalance": "ローン",
     "pendingSharesOwe": "グループの貸し借りを反映した純額 {{net}}({{owed}}件未精算)",
     "pendingSharesOwed": "あなたへの未回収{{owed}}を含む純額 {{net}}",
     "pendingSharesTooltip": "精算前の、グループ間の貸し借りを反映しています。",
@@ -941,6 +942,7 @@
     "searchPlaceholder": "取引を検索...",
     "clearFilters": "フィルタをクリア",
     "exportCsv": "CSVエクスポート",
+    "refresh": "更新",
     "exportSelected": "選択をエクスポート({{count}}件)",
     "exporting": "エクスポート中...",
     "exportSuccess": "取引をエクスポートしました",
@@ -1156,6 +1158,7 @@
     "confirmDeleteTitle": "口座を削除しますか?",
     "confirmDeleteDesc": "この操作は取り消せません。この口座に関連するすべての取引、インポート記録、定期取引も削除され、この口座を追跡していた目標の紐付けが解除されます。",
     "openingBalance": "期首残高",
+    "openingBalanceDescription": "期首残高",
     "notFound": "口座が見つかりません。",
     "balance": "残高",
     "balanceCreditCard": "未払い金額",
@@ -1164,6 +1167,7 @@
     "lastSync": "最終同期",
     "multiInstitutionLink": "{{provider}} · {{count}}機関",
     "sync": "同期",
+    "retrySync": "同期を再試行",
     "disconnect": "切断",
     "addManual": "口座を追加",
     "editAccount": "口座を編集",
@@ -1184,6 +1188,12 @@
     "typeCreditCard": "クレジットカード",
     "typeInvestment": "投資",
     "typeWallet": "ウォレット",
+    "typeLoan": "ローン",
+    "securedProperty": "紐付けた資産",
+    "noSecuredProperty": "紐付けた資産なし",
+    "loanRetypeHint": "取引のない口座だけがローンとの間で種類を変更できます。",
+    "loanRetypeBlocked": "この口座には取引があるため、ローンとの間で種類を変更できません。新しいローン口座を作成してください。",
+    "balanceLoan": "残債",
     "creditLimit": "利用枠",
     "statementCloseDay": "締め日",
     "paymentDueDay": "支払日",
@@ -1211,6 +1221,7 @@
     "updated": "口座を更新しました",
     "deleted": "口座を削除しました",
     "syncDone": "同期が完了しました",
+    "syncRateLimited": "銀行の1日の利用上限に達したため、新しいデータは取得されませんでした。しばらくしてから再度お試しください。",
     "syncError": "同期に失敗しました",
     "connected": "銀行を接続しました",
     "connectError": "銀行の接続に失敗しました",
@@ -1436,7 +1447,6 @@
     "endDate": "終了日(任意)",
     "category": "カテゴリ",
     "account": "口座",
-    "noAccount": "なし",
     "nextOccurrence": "次回",
     "status": "ステータス",
     "actions": "操作",
@@ -1718,8 +1728,13 @@
     "errors": {
       "invalid_date": "無効な日付形式",
       "no_amount": "入金/出金金額なし",
-      "invalid_amount": "無効な金額形式"
-    }
+      "invalid_amount": "無効な金額形式",
+      "invalid_fx_rate": "無効な為替レート",
+      "ambiguous_amount": "入金と出金の両方が入力されています",
+      "conflicting_amount": "金額フィールドの競合",
+      "invalid_direction": "無効な貸借区分"
+    },
+    "selectAll": "すべて選択"
   },
   "assetImport": {
     "title": "投資注文をインポート",
@@ -1770,6 +1785,7 @@
       "invalid_date": "読み取れない日付",
       "invalid_quantity": "読み取れない数量",
       "invalid_price": "読み取れない価格",
+      "invalid_fee": "読み取れない手数料",
       "invalid_kind": "認識できない買付/売却値",
       "unknown_ticker": "価格プロバイダーがティッカーを検出できません",
       "oversell": "保有数を超える売却"
@@ -1909,7 +1925,9 @@
     "total": "合計",
     "confirmRegenerateTitle": "価値を再生成しますか?",
     "confirmRegenerate": "増加パラメータが変更されました。自動生成されたすべての価値が削除され再計算されます。手動入力の価値は保持されます。",
-    "regenerate": "再生成"
+    "regenerate": "再生成",
+    "linkedLoans": "紐付けたローン",
+    "propertyEquity": "評価額 {{value}} · 負債 {{debt}} · 純資産 {{equity}}"
   },
   "reports": {
     "section": "分析",
@@ -1939,6 +1957,9 @@
     "inflowOutflow": "流入と流出",
     "startingBalance": "期首残高",
     "endingBalance": "予測残高",
+    "runwayNegativeOn": "{{date}}に残高がマイナスになります",
+    "runwayAlreadyNegative": "すでにマイナス",
+    "lowestBalance": "最低残高",
     "projectedIncome": "予測収入",
     "projectedExpenses": "予測支出",
     "incomeExpenses": "収入と支出",
@@ -2143,6 +2164,8 @@
     "remove": "削除"
   },
   "splitGroups": {
+    "searchPlaceholder": "グループを検索...",
+    "clearSearch": "検索をクリア",
     "title": "グループ",
     "section": "設定",
     "add": "グループを追加",

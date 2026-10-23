@@ -149,6 +149,8 @@ class Transaction(Base):
     attachment_count: int = 0
     payee_name = cast(Optional[str], None)
     asset_name = cast(Optional[str], None)
+    running_balance = cast(Optional[float], None)
+    running_balance_primary = cast(Optional[float], None)
 
 
 # Safety net: `effective_date` is NOT NULL. For non-CC transactions it always

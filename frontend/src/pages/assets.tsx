@@ -6,7 +6,7 @@ import { useRegisterPageChatContext } from '@/lib/page-chat-context'
 import { assets, assetGroups, currencies as currenciesApi, transactions as transactionsApi, categories as categoriesApi, categoryGroups as categoryGroupsApi, accounts as accountsApi } from '@/lib/api'
 import { TransactionDialog, type TransactionSavePayload } from '@/components/transaction-dialog'
 import { invalidateFinancialQueries } from '@/lib/invalidate-queries'
-import { extractApiError } from '@/lib/api-errors'
+import { extractApiError } from '@/lib/api-errors' 
 import { localDateString } from '@/lib/date-utils'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -58,12 +58,15 @@ import {
 } from 'recharts'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '@/components/page-header'
+import { PropertyEquitySummary } from '@/components/property-equity-summary'
+import { LOAN_COLLATERAL_TYPES } from '@/lib/property-equity'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
 import { getAssetProfit } from '@/lib/asset-profit'
 import { getPortfolioShare, getPortfolioTotalPrimary } from '@/lib/asset-portfolio-share'
+import { formatTransactionTotal, getTransactionTotalCurrency } from '@/lib/asset-transaction-total'
 import { formatCurrency } from '@/lib/format'
 
 // Renders a logo image when one is available, falling back to the asset's
@@ -278,6 +281,11 @@ export default function AssetsPage() {
   const { data: rawPortfolioData } = useQuery({
     queryKey: ['portfolio-trend'],
     queryFn: () => assets.portfolioTrend(),
+  })
+  // Loans secured against a property show up in that property's detail.
+  const { data: accountsList } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => accountsApi.list(),
   })
   // Scope the portfolio chart + total to the active collection's wallets too.
   // Trend rows are keyed by asset id, so we keep only the in-collection asset
@@ -849,7 +857,17 @@ export default function AssetsPage() {
         </div>
 
         {isExpanded && (
-          isMarketPriced ? (
+          <>
+          {LOAN_COLLATERAL_TYPES.includes(asset.type) && (
+            <PropertyEquitySummary
+              asset={asset}
+              loans={accountsList ?? []}
+              currency={userCurrency}
+              locale={locale}
+              mask={mask}
+            />
+          )}
+          {isMarketPriced ? (
             <>
               {/* Value-evolution chart on top, then the buy/sell ledger. */}
               <AssetDetail assetId={asset.id} currency={asset.currency} locale={locale} dateLocale={dateLocale} purchasePrice={asset.purchase_price} purchaseDate={asset.purchase_date} valuationMethod={asset.valuation_method} canWrite={canWrite} chartOnly />
@@ -865,7 +883,8 @@ export default function AssetsPage() {
             </>
           ) : (
             <AssetDetail assetId={asset.id} currency={asset.currency} locale={locale} dateLocale={dateLocale} purchasePrice={asset.purchase_price} purchaseDate={asset.purchase_date} valuationMethod={asset.valuation_method} canWrite={canWrite} />
-          )
+          )}
+          </>
         )}
       </div>
     )
@@ -1138,9 +1157,9 @@ export default function AssetsPage() {
           )}
 
           {activeAssets.length === 0 && soldAssets.length === 0 && (
-            <div className="text-center py-16">
-              <Package className="mx-auto h-12 w-12 text-muted-foreground/40 mb-3" />
-              <p className="text-muted-foreground">{t('assets.noAssets')}</p>
+            <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden text-center py-16 text-muted-foreground">
+              <Package size={32} className="mx-auto mb-2 opacity-50" />
+              <p>{t('assets.noAssets')}</p>
             </div>
           )}
         </div>
@@ -2804,9 +2823,9 @@ function AssetTransactionsTab({
         </div>
       ) : (txs ?? []).length === 0 ? (
         holdingsWithoutCost.length === 0 ? (
-          <div className="text-center py-16">
-            <TrendingUp className="mx-auto h-12 w-12 text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground">{t('assets.noTransactions')}</p>
+          <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden text-center py-16 text-muted-foreground">
+            <TrendingUp size={32} className="mx-auto mb-2 opacity-50" />
+            <p>{t('assets.noTransactions')}</p>
           </div>
         ) : null
       ) : (
@@ -2971,9 +2990,9 @@ function AssetTransactionsTab({
               <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
                 <span className="text-xs font-medium text-muted-foreground">{t('assets.txTotal')}</span>
                 <span className="text-sm font-bold tabular-nums text-foreground">
-                  {formatCurrency(
+                  {formatTransactionTotal(
                     parseFloat(formQuantity) * parseFloat(formPrice) + (formFee ? parseFloat(formFee) : 0) * (formKind === 'buy' ? 1 : -1),
-                    'USD',
+                    getTransactionTotalCurrency(holdings, formHolding, editingTx),
                     locale,
                   )}
                 </span>

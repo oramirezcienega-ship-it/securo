@@ -829,6 +829,7 @@
     "netWorth": "Majątek netto",
     "netWorthTooltip": "Konta + inwestycje, pomniejszone o otwarte rachunki karty kredytowej.",
     "creditCardBalance": "Otwarte rachunki karty kredytowej",
+    "loanBalance": "Kredyty i finansowania",
     "pendingSharesOwe": "Netto {{net}} po długach grupowych ({{owed}} oczekuje)",
     "pendingSharesOwed": "Netto {{net}}, w tym {{owed}} należne Tobie",
     "pendingSharesTooltip": "Odzwierciedla to, co jesteś winien / co jest Ci winne w grupach, przed rozliczeniem.",
@@ -955,6 +956,7 @@
     "searchPlaceholder": "Szukaj transakcji...",
     "clearFilters": "Wyczyść filtry",
     "exportCsv": "Eksportuj CSV",
+    "refresh": "Odśwież",
     "exportSelected_one": "Eksportuj zaznaczone ({{count}})",
     "exportSelected_few": "Eksportuj zaznaczone ({{count}})",
     "exportSelected_many": "Eksportuj zaznaczone ({{count}})",
@@ -1197,6 +1199,7 @@
     "confirmDeleteTitle": "Usunąć konto?",
     "confirmDeleteDesc": "Ta operacja jest nieodwracalna. Usunie również każdą transakcję, rekord importu i transakcję cykliczną powiązaną z tym kontem oraz odłączy wszelkie cele, które je śledziły.",
     "openingBalance": "saldo początkowe",
+    "openingBalanceDescription": "Saldo początkowe",
     "notFound": "Nie znaleziono konta.",
     "balance": "Saldo",
     "balanceCreditCard": "Kwota zadłużenia",
@@ -1208,6 +1211,7 @@
     "multiInstitutionLink_many": "{{provider}} · {{count}} instytucji",
     "multiInstitutionLink_other": "{{provider}} · {{count}} instytucji",
     "sync": "Synchronizuj",
+    "retrySync": "Ponów synchronizację",
     "disconnect": "Odłącz",
     "addManual": "Dodaj konto",
     "editAccount": "Edytuj konto",
@@ -1228,6 +1232,12 @@
     "typeCreditCard": "Karta kredytowa",
     "typeInvestment": "Inwestycyjne",
     "typeWallet": "Portfel",
+    "typeLoan": "Kredyt / finansowanie",
+    "securedProperty": "Powiązany składnik majątku",
+    "noSecuredProperty": "Brak powiązanego składnika majątku",
+    "loanRetypeHint": "Tylko konto bez transakcji może zmienić typ na Kredyt lub z Kredytu.",
+    "loanRetypeBlocked": "To konto ma transakcje, więc nie może zmienić typu na Kredyt ani z Kredytu. Utwórz zamiast tego nowe konto kredytowe.",
+    "balanceLoan": "Pozostałe zadłużenie",
     "creditLimit": "Limit kredytowy",
     "statementCloseDay": "Dzień zamknięcia okresu rozliczeniowego",
     "paymentDueDay": "Dzień płatności",
@@ -1261,6 +1271,7 @@
     "updated": "Zaktualizowano konto",
     "deleted": "Usunięto konto",
     "syncDone": "Synchronizacja zakończona",
+    "syncRateLimited": "Osiągnięto dzienny limit banku, nie pobrano nowych danych. Spróbuj ponownie później.",
     "syncError": "Synchronizacja nie powiodła się",
     "connected": "Pomyślnie połączono bank",
     "connectError": "Nie udało się połączyć banku",
@@ -1495,7 +1506,6 @@
     "endDate": "Data zakończenia (opcjonalnie)",
     "category": "Kategoria",
     "account": "Konto",
-    "noAccount": "Brak",
     "nextOccurrence": "Następna",
     "status": "Status",
     "actions": "Akcje",
@@ -1807,8 +1817,13 @@
     "errors": {
       "invalid_date": "Nieprawidłowy format daty",
       "no_amount": "Brak kwoty wpływu lub wypływu",
-      "invalid_amount": "Nieprawidłowy format kwoty"
-    }
+      "invalid_amount": "Nieprawidłowy format kwoty",
+      "invalid_fx_rate": "Nieprawidłowy kurs walutowy",
+      "ambiguous_amount": "Wpływ i wypływ uzupełnione",
+      "conflicting_amount": "Konfliktowe pola kwot",
+      "invalid_direction": "Nieprawidłowy wskaźnik uznania/obciążenia"
+    },
+    "selectAll": "Zaznacz wszystko"
   },
   "assetImport": {
     "title": "Importuj zlecenia inwestycyjne",
@@ -1859,6 +1874,7 @@
       "invalid_date": "nieczytelna data",
       "invalid_quantity": "nieczytelna ilość",
       "invalid_price": "nieczytelna cena",
+      "invalid_fee": "nieczytelna prowizja",
       "invalid_kind": "nierozpoznane kupno/sprzedaż",
       "unknown_ticker": "ticker nieznany dostawcy notowań",
       "oversell": "sprzedaż większa niż pozycja"
@@ -1998,7 +2014,9 @@
     "total": "Łącznie",
     "confirmRegenerateTitle": "Przeliczyć wartości ponownie?",
     "confirmRegenerate": "Zmieniono parametry wzrostu. Wszystkie automatycznie wygenerowane wartości zostaną usunięte i przeliczone ponownie. Wartości ręczne zostaną zachowane.",
-    "regenerate": "Przelicz ponownie"
+    "regenerate": "Przelicz ponownie",
+    "linkedLoans": "Powiązane kredyty",
+    "propertyEquity": "Wartość {{value}} · Dług {{debt}} · Kapitał własny {{equity}}"
   },
   "reports": {
     "section": "Analityka",
@@ -2028,6 +2046,9 @@
     "inflowOutflow": "Wpływy a wypływy",
     "startingBalance": "Saldo początkowe",
     "endingBalance": "Saldo prognozowane",
+    "runwayNegativeOn": "Saldo spadnie poniżej zera {{date}}",
+    "runwayAlreadyNegative": "Już na minusie",
+    "lowestBalance": "Najniższe saldo",
     "projectedIncome": "Prognozowane przychody",
     "projectedExpenses": "Prognozowane wydatki",
     "incomeExpenses": "Przychody a wydatki",
@@ -2241,6 +2262,8 @@
     "remove": "Usuń"
   },
   "splitGroups": {
+    "searchPlaceholder": "Szukaj grup...",
+    "clearSearch": "Wyczyść wyszukiwanie",
     "title": "Grupy",
     "section": "Konfiguracja",
     "add": "Dodaj grupę",

@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
+import { loadReportsRange, saveReportsRange, type ReportsRange } from '@/lib/remembered-range' 
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { useQuery } from '@tanstack/react-query'
@@ -37,7 +38,13 @@ import { useAuth } from '@/contexts/auth-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
 import type { ReportResponse, CategoryTrendItem } from '@/types'
 import { formatCurrency } from '@/lib/format'
-import { localDateString } from '@/lib/date-utils'
+import { localDateString, todayInTimezone } from '@/lib/date-utils'
+import { useEffectiveTimezone } from '@/hooks/use-timezone'
+import {
+  formatNetWorthAxisTick,
+  getNetWorthDomain,
+  shouldFillNetWorthArea,
+} from '@/lib/net-worth-chart-utils'
 
 // A small qualitative palette of well-separated hues for the composition
 // detail ring. Capped to a handful of slices, distinct colours make each
@@ -200,7 +207,23 @@ const REPORT_TABS: ReportTab[] = [
   },
 ]
 
+/** The range last used on `tab`, if it is still one the tab offers. */
+function storedReportsRange(tab: ReportTab): ReportsRange | null {
+  const stored = loadReportsRange(tab.key)
+  if (!stored) return null
+  const isCustom = stored.rangeKey === CUSTOM_RANGE_KEY
+  const rangeOk = isCustom
+    ? tab.supportsCustomRange && !!stored.from && !!stored.to
+    : tab.rangeOptions.some((r) => r.key === stored.rangeKey)
+  if (!rangeOk) return null
+  const interval = tab.intervalOptions.some((i) => i.value === stored.interval)
+    ? stored.interval
+    : tab.fallbackInterval
+  return { ...stored, interval, ...(isCustom ? {} : { from: '', to: '' }) }
+}
+
 export default function ReportsPage() {
+  const timeZone = useEffectiveTimezone()
   const { t } = useTranslation()
   const { mask, privacyMode, MASK } = usePrivacyMode()
   const { user } = useAuth()
@@ -217,34 +240,28 @@ export default function ReportsPage() {
     } catch {}
     return 'expense_breakdown'
   })
-  const [rangeKey, setRangeKey] = useState<string>(() => {
-    try {
-      const savedTab = localStorage.getItem('securo_reports_active_tab') || 'expense_breakdown'
-      const tabObj = REPORT_TABS.find((t) => t.key === savedTab) || REPORT_TABS[0]
-      const savedRange = localStorage.getItem('securo_reports_range_key')
-      if (savedRange && (tabObj.rangeOptions.some((r) => r.key === savedRange) || (savedRange === CUSTOM_RANGE_KEY && tabObj.supportsCustomRange))) {
-        return savedRange
-      }
-      return tabObj.fallbackRangeKey
-    } catch {
-      return 'this_month'
+
+  const [initialRange] = useState<ReportsRange>(() => {
+    const tabObj = REPORT_TABS.find((t) => t.key === activeTab) || REPORT_TABS[0]
+    return storedReportsRange(tabObj) ?? {
+      rangeKey: tabObj.fallbackRangeKey,
+      from: '',
+      to: '',
+      interval: tabObj.fallbackInterval,
     }
   })
-  const [interval, setInterval] = useState('monthly')
-  const [customFrom, setCustomFrom] = useState<string>(() => {
+  const [rangeKey, setRangeKey] = useState(initialRange.rangeKey)
+  const [interval, setInterval] = useState(initialRange.interval)
+  const [customFrom, setCustomFrom] = useState(initialRange.from)
+  const [customTo, setCustomTo] = useState(initialRange.to)
+
+  useEffect(() => {
+    saveReportsRange(activeTab, { rangeKey, from: customFrom, to: customTo, interval })
     try {
-      return localStorage.getItem('securo_reports_custom_from') || ''
-    } catch {
-      return ''
-    }
-  })
-  const [customTo, setCustomTo] = useState<string>(() => {
-    try {
-      return localStorage.getItem('securo_reports_custom_to') || ''
-    } catch {
-      return ''
-    }
-  })
+      localStorage.setItem('securo_reports_active_tab', activeTab)
+    } catch {}
+  }, [activeTab, rangeKey, customFrom, customTo, interval])
+
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>(() => {
     try {
       return localStorage.getItem('securo_reports_account_filter') || 'all'
@@ -384,6 +401,16 @@ export default function ReportsPage() {
     setCompositionView(key === 'net_worth' ? 'netWorth' : 'net')
     setSparklinePage(0)
     setSelectedDate(null)
+    const remembered = storedReportsRange(nextTab)
+    if (remembered) {
+      setRangeKey(remembered.rangeKey)
+      setInterval(remembered.interval)
+      if (remembered.rangeKey === CUSTOM_RANGE_KEY) {
+        setCustomFrom(remembered.from)
+        setCustomTo(remembered.to)
+      }
+      return
+    }
     // Clamp the range/interval preset to what the new tab supports.
     const stillValid =
       (rangeKey === CUSTOM_RANGE_KEY && nextTab.supportsCustomRange) ||
@@ -434,6 +461,34 @@ export default function ReportsPage() {
       ...breakdowns,
     } as Record<string, string | number | null>
   })
+  const netWorthDomain = getNetWorthDomain(
+    chartData
+      .map((point) => point.value)
+      .filter((value): value is number => typeof value === 'number'),
+  )
+
+  // Cash-flow runway: the first projected day below zero and the lowest
+  // point of the horizon, both computed day by day on the backend.
+  const runwayDate = meta?.type === 'cash_flow' ? meta.runway_date ?? null : null
+  const lowestBalance = meta?.type === 'cash_flow' ? meta.lowest_balance ?? null : null
+  const lowestBalanceDate = meta?.type === 'cash_flow' ? meta.lowest_balance_date ?? null : null
+  // The backend reports today as the runway date when the balance is already
+  // below zero, which is a different thing to say than "it will go negative".
+  // It reckons that day in the workspace's own timezone, so this has to as
+  // well: a browser already past midnight would otherwise call tomorrow's
+  // crossing a balance that is negative today.
+  const alreadyNegative = runwayDate !== null && runwayDate <= todayInTimezone(timeZone)
+  // Day and month are enough inside the current year; a longer horizon reaches
+  // into the next one, where the year stops being obvious.
+  const formatDay = (iso: string) => {
+    const day = new Date(iso + 'T00:00:00')
+    const sameYear = day.getFullYear() === new Date().getFullYear()
+    return day.toLocaleDateString(locale, {
+      day: 'numeric',
+      month: 'short',
+      ...(sameYear ? {} : { year: 'numeric' }),
+    })
+  }
 
   const allBreakdowns = summary?.breakdowns ?? []
   const breakdownData = allBreakdowns.filter((b) => b.value > 0)
@@ -899,6 +954,38 @@ export default function ReportsPage() {
                     </p>
                   </div>
                 ))}
+                {/* Cash flow only: the lowest point of the projection. It keeps
+                    one permanent slot and lets the label and the colour carry
+                    the state, instead of a banner that comes and goes. */}
+                {lowestBalance !== null && lowestBalanceDate && (
+                  <div className="min-w-0" data-testid="cash-flow-runway">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <div
+                        className={`w-2.5 h-2.5 rounded-full shrink-0 ${runwayDate ? 'bg-rose-500' : 'bg-muted-foreground/40'}`}
+                      />
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {!runwayDate
+                          ? t('reports.lowestBalance')
+                          : alreadyNegative
+                            ? t('reports.runwayAlreadyNegative')
+                            : t('reports.runwayNegativeOn', { date: formatDay(runwayDate) })}
+                      </p>
+                    </div>
+                    <p
+                      className={`text-lg font-bold tabular-nums ${runwayDate ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}`}
+                    >
+                      {mask(formatCurrency(lowestBalance, userCurrency, locale))}
+                      {/* The day the balance bottoms out, but only when the
+                          label is not already naming the day it crosses zero.
+                          Two dates side by side read as one fact, not two. */}
+                      {!runwayDate || alreadyNegative ? (
+                        <span className="ml-1.5 text-xs font-medium text-muted-foreground">
+                          {formatDay(lowestBalanceDate)}
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1062,6 +1149,9 @@ export default function ReportsPage() {
                       strokeDasharray="4 4"
                       strokeOpacity={0.5}
                     />
+                    {lowestBalance !== null && lowestBalance < 0 && (
+                      <ReferenceLine y={0} stroke="#F43F5E" strokeOpacity={0.6} />
+                    )}
                     {forecastStart && (
                       <ReferenceLine
                         x={forecastStart}
@@ -1166,15 +1256,15 @@ export default function ReportsPage() {
                   interval="preserveStartEnd"
                 />
                 <YAxis
+                  domain={netWorthDomain}
                   tickFormatter={(v) => {
                     if (privacyMode) return ''
-                    if (v === 0) return '0'
-                    return formatCompact(v, userCurrency, locale)
+                    return formatNetWorthAxisTick(v, netWorthDomain, userCurrency, locale)
                   }}
                   tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
                   axisLine={false}
                   tickLine={false}
-                  width={64}
+                  width={88}
                   tickCount={5}
                 />
                 <Tooltip
@@ -1207,7 +1297,7 @@ export default function ReportsPage() {
                   dataKey="value"
                   stroke="#6366F1"
                   strokeWidth={2.5}
-                  fill="url(#netWorthGrad)"
+                  fill={shouldFillNetWorthArea(netWorthDomain) ? 'url(#netWorthGrad)' : 'none'}
                   dot={false}
                   activeDot={{ r: 4, fill: '#6366F1' }}
                 />

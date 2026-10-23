@@ -135,4 +135,52 @@ describe('Dashboard net worth breakdown', () => {
     const cardRow = within(tooltip).getByText(t('dashboard.creditCardBalance')).parentElement!
     expect(cardRow).toHaveTextContent(formatCurrency(-500, 'USD', 'en-US'))
   })
+
+  it('lists mortgage debt as its own row instead of available balance', async () => {
+    api.accounts.list.mockResolvedValue([
+      ...accounts,
+      account({ id: 'mortgage', name: 'Mortgage', type: 'loan', current_balance: -40000 }),
+    ])
+    const { user } = renderWithProviders(
+      <TooltipProvider delayDuration={0}>
+        <DashboardPage />
+      </TooltipProvider>,
+    )
+
+    await screen.findByText(formatCurrency(500, 'USD', 'en-US'))
+    await user.hover(screen.getByRole('button', { name: 'i' }))
+
+    const tooltip = await screen.findByRole('tooltip')
+    const availableRow = within(tooltip).getByText(t('dashboard.availableBalance')).parentElement!
+    expect(availableRow).toHaveTextContent(formatCurrency(1000, 'USD', 'en-US'))
+    const loanRow = within(tooltip).getByText(t('dashboard.loanBalance')).parentElement!
+    expect(loanRow).toHaveTextContent(formatCurrency(-40000, 'USD', 'en-US'))
+  })
+})
+
+describe('Dashboard available balance without an FX rate', () => {
+  const renderDashboard = () => renderWithProviders(
+    <TooltipProvider delayDuration={0}>
+      <DashboardPage />
+    </TooltipProvider>,
+  )
+
+  it('shows an unconverted account in its own currency and flags the total', async () => {
+    api.accounts.list.mockResolvedValue([
+      account({ id: 'checking', name: 'Checking', current_balance: 1000 }),
+      account({ id: 'eur', name: 'Euro Savings', type: 'savings', currency: 'EUR', current_balance: 100, fx_fallback: true }),
+    ])
+    renderDashboard()
+
+    const chip = (await screen.findByText('Euro Savings')).closest('a')!
+    expect(chip).toHaveTextContent(formatCurrency(100, 'EUR', 'en-US'))
+    expect(screen.getByText(t('transactions.fxFallbackBanner'))).toBeInTheDocument()
+  })
+
+  it('does not flag the total when every account is converted', async () => {
+    renderDashboard()
+
+    await screen.findByText('Checking')
+    expect(screen.queryByText(t('transactions.fxFallbackBanner'))).not.toBeInTheDocument()
+  })
 })

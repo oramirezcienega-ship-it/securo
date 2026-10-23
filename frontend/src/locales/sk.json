@@ -829,6 +829,7 @@
     "netWorth": "Čisté imanie",
     "netWorthTooltip": "Účty + investície, po odpočítaní otvorených faktúr kreditnej karty.",
     "creditCardBalance": "Otvorené faktúry kreditnej karty",
+    "loanBalance": "Úvery a financovanie",
     "pendingSharesOwe": "Netto {{net}} po skupinových dlhoch ({{owed}} čaká na vyrovnanie)",
     "pendingSharesOwed": "Netto {{net}} vrátane {{owed}}, ktoré ti dlhujú",
     "pendingSharesTooltip": "Zohľadňuje, čo dlhuješ / čo ti dlhujú v tvojich skupinách, pred vyrovnaním.",
@@ -957,6 +958,7 @@
     "searchPlaceholder": "Hľadať transakcie...",
     "clearFilters": "Zrušiť filtre",
     "exportCsv": "Exportovať CSV",
+    "refresh": "Obnoviť",
     "exportSelected": "Exportovať vybrané ({{count}})",
     "exportSelected_one": "Exportovať vybranú ({{count}})",
     "exportSelected_few": "Exportovať vybrané ({{count}})",
@@ -1208,6 +1210,7 @@
     "confirmDeleteTitle": "Vymazať účet?",
     "confirmDeleteDesc": "Táto akcia je nezvratná. Vymaže aj všetky transakcie, záznamy o importoch a opakované transakcie priradené k tomuto účtu a odpojí všetky ciele, ktoré ho sledovali.",
     "openingBalance": "počiatočný zostatok",
+    "openingBalanceDescription": "Počiatočný zostatok",
     "notFound": "Účet sa nenašiel.",
     "balance": "Zostatok",
     "balanceCreditCard": "Dlžná suma",
@@ -1220,6 +1223,7 @@
     "multiInstitutionLink_many": "{{provider}} · {{count}} inštitúcie",
     "multiInstitutionLink_other": "{{provider}} · {{count}} inštitúcií",
     "sync": "Synchronizovať",
+    "retrySync": "Znovu skúsiť synchronizáciu",
     "disconnect": "Odpojiť",
     "addManual": "Pridať účet",
     "editAccount": "Upraviť účet",
@@ -1240,6 +1244,12 @@
     "typeCreditCard": "Kreditná karta",
     "typeInvestment": "Investičný účet",
     "typeWallet": "Peňaženka",
+    "typeLoan": "Úver / financovanie",
+    "securedProperty": "Prepojený majetok",
+    "noSecuredProperty": "Žiadny prepojený majetok",
+    "loanRetypeHint": "Iba účet bez transakcií môže prejsť na typ Úver alebo z neho.",
+    "loanRetypeBlocked": "Tento účet má transakcie, preto nemôže prejsť na typ Úver ani z neho. Vytvorte namiesto toho nový úverový účet.",
+    "balanceLoan": "Zostatok dlhu",
     "creditLimit": "Kreditný limit",
     "statementCloseDay": "Deň uzávierky výpisu",
     "paymentDueDay": "Deň splatnosti",
@@ -1275,6 +1285,7 @@
     "updated": "Účet aktualizovaný",
     "deleted": "Účet vymazaný",
     "syncDone": "Synchronizácia dokončená",
+    "syncRateLimited": "Dosiahnutý denný limit banky, žiadne nové údaje neboli stiahnuté. Skúste to prosím neskôr.",
     "syncError": "Synchronizácia zlyhala",
     "connected": "Banka úspešne prepojená",
     "connectError": "Nepodarilo sa prepojiť banku",
@@ -1512,7 +1523,6 @@
     "endDate": "Dátum konca (voliteľné)",
     "category": "Kategória",
     "account": "Účet",
-    "noAccount": "Žiadny",
     "nextOccurrence": "Najbližšie",
     "status": "Stav",
     "actions": "Akcie",
@@ -1834,8 +1844,13 @@
     "errors": {
       "invalid_date": "Neplatný formát dátumu",
       "no_amount": "Chýba suma príjmu alebo výdaja",
-      "invalid_amount": "Neplatný formát sumy"
-    }
+      "invalid_amount": "Neplatný formát sumy",
+      "invalid_fx_rate": "Neplatný kurz",
+      "ambiguous_amount": "Vyplnené príjmy aj výdavky",
+      "conflicting_amount": "Konfliktné polia sumy",
+      "invalid_direction": "Neplatný indikátor príjmu/výdavku"
+    },
+    "selectAll": "Vybrať všetko"
   },
   "assetImport": {
     "title": "Import investičných pokynov",
@@ -1886,6 +1901,7 @@
       "invalid_date": "nečitateľný dátum",
       "invalid_quantity": "nečitateľné množstvo",
       "invalid_price": "nečitateľná cena",
+      "invalid_fee": "nečitateľný poplatok",
       "invalid_kind": "nerozpoznaná hodnota nákup/predaj",
       "unknown_ticker": "poskytovateľ cien ticker nenašiel",
       "oversell": "predaj väčšieho množstva, než pozícia obsahuje"
@@ -2025,7 +2041,9 @@
     "total": "Spolu",
     "confirmRegenerateTitle": "Prepočítať hodnoty?",
     "confirmRegenerate": "Parametre rastu sa zmenili. Všetky automaticky vygenerované hodnoty sa vymažú a prepočítajú. Manuálne hodnoty zostanú zachované.",
-    "regenerate": "Prepočítať"
+    "regenerate": "Prepočítať",
+    "linkedLoans": "Prepojené úvery",
+    "propertyEquity": "Hodnota {{value}} · Dlh {{debt}} · Vlastný kapitál {{equity}}"
   },
   "reports": {
     "section": "Analytika",
@@ -2055,6 +2073,9 @@
     "inflowOutflow": "Prítok vs odtok",
     "startingBalance": "Počiatočný zostatok",
     "endingBalance": "Predpokladaný zostatok",
+    "runwayNegativeOn": "Zostatok bude záporný {{date}}",
+    "runwayAlreadyNegative": "Už v mínuse",
+    "lowestBalance": "Najnižší zostatok",
     "projectedIncome": "Predpokladaný príjem",
     "projectedExpenses": "Predpokladané výdavky",
     "incomeExpenses": "Príjmy vs výdavky",
@@ -2271,6 +2292,8 @@
     "remove": "Odstrániť"
   },
   "splitGroups": {
+    "searchPlaceholder": "Hľadať skupiny...",
+    "clearSearch": "Vymazať vyhľadávanie",
     "title": "Skupiny",
     "section": "Nastavenie",
     "add": "Pridať skupinu",
