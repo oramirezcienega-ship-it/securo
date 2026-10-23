@@ -20,7 +20,7 @@ git rebase upstream/main || {
 git push origin main || true
 
 echo "[2/4] Actualizando imágenes de Docker..."
-docker compose -f docker-compose.prod.yml pull redis db || true
+docker compose -f docker-compose.prod.yml pull || true
 
 echo "[3/4] Recompilando frontend con tus mejoras..."
 docker run --rm -v "$DIR/frontend:/app" -w /app node:22-slim npm run build
